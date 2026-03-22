@@ -34,4 +34,8 @@
     <string name="password_too_short">Password too short</string>
     <string name="passwords_dont_match">Passwords don\'t match</string>
     <string name="invalid_password">Invalid password</string>
+    
+    <!-- Import/Export -->
+    <string name="import_entries">Import Passwords</string>
+    <string name="export_entries">Export Passwords</string>
 </resources>

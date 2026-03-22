@@ -2,11 +2,13 @@ package com.passwordmanager.app
 
 import android.os.Bundle
 import android.util.Base64
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.biometric.BiometricPrompt
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.passwordmanager.app.databinding.ActivityMainBinding
@@ -17,11 +19,10 @@ import com.passwordmanager.app.db.EntryDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class MainActivity : AppCompatActivity() {
     
@@ -29,6 +30,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var database: EntryDatabase
     private lateinit var adapter: EntriesAdapter
     private var masterPasswordHash: String? = null
+    
+    private val importFileLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { importFromUri(it) }
+    }
+    
+    private val exportFileLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let { exportToUri(it) }
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +51,8 @@ class MainActivity : AppCompatActivity() {
         database = EntryDatabase.getInstance(this)
         masterPasswordHash = getSharedPreferences("auth", MODE_PRIVATE).getString("master_hash", null)
         
+        setSupportActionBar(binding.toolbar)
+        
         if (masterPasswordHash == null) {
             showSetupDialog()
         } else {
@@ -46,6 +61,25 @@ class MainActivity : AppCompatActivity() {
         
         setupRecyclerView()
         setupClickListeners()
+    }
+    
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+    
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_import -> {
+                importFileLauncher.launch("application/json")
+                true
+            }
+            R.id.action_export -> {
+                exportFileLauncher.launch("passwords_backup.json")
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
     
     private fun setupRecyclerView() {
@@ -61,11 +95,6 @@ class MainActivity : AppCompatActivity() {
     private fun setupClickListeners() {
         binding.fabAdd.setOnClickListener {
             showAddDialog()
-        }
-        
-        binding.btnGenerate.setOnClickListener {
-            val password = generatePassword(16)
-            binding.etPassword.setText(password)
         }
     }
     
@@ -245,19 +274,19 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun encryptPassword(password: String): String {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore")
+        val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
         keyStore.load(null)
         
         if (!keyStore.containsAlias("pm_key")) {
-            val keyGenerator = KeyGenerator.getInstance(
-                KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
+            val keyGenerator = java.security.KeyGenerator.getInstance(
+                java.security.KeyStore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
             )
             val spec = android.security.keystore.KeyGenParameterSpec.Builder(
                 "pm_key",
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
             )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
                 .build()
             
@@ -265,9 +294,9 @@ class MainActivity : AppCompatActivity() {
             keyGenerator.generateKey()
         }
         
-        val key = keyStore.getKey("pm_key", null) as SecretKey
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val key = keyStore.getKey("pm_key", null) as javax.crypto.SecretKey
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
         
         val encrypted = cipher.doFinal(password.toByteArray())
         val iv = cipher.iv
@@ -278,22 +307,91 @@ class MainActivity : AppCompatActivity() {
     
     private fun decryptPassword(encrypted: String): String? {
         return try {
-            val keyStore = KeyStore.getInstance("AndroidKeyStore")
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
             keyStore.load(null)
             
-            val key = keyStore.getKey("pm_key", null) as? SecretKey ?: return null
+            val key = keyStore.getKey("pm_key", null) as? javax.crypto.SecretKey ?: return null
             
             val combined = Base64.decode(encrypted, Base64.NO_WRAP)
             val iv = combined.copyOfRange(0, 12)
             val encryptedBytes = combined.copyOfRange(12, combined.size)
             
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val spec = GCMParameterSpec(128, iv)
-            cipher.init(Cipher.DECRYPT_MODE, key, spec)
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            val spec = javax.crypto.spec.GCMParameterSpec(128, iv)
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, spec)
             
             String(cipher.doFinal(encryptedBytes))
         } catch (e: Exception) {
             null
+        }
+    }
+    
+    private fun importFromUri(uri: android.net.Uri) {
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val reader = BufferedReader(InputStreamReader(inputStream))
+            val jsonString = reader.readText()
+            reader.close()
+            
+            val json = JSONArray(jsonString)
+            var imported = 0
+            
+            for (i in 0 until json.length()) {
+                val obj = json.getJSONObject(i)
+                val site = obj.getString("site")
+                val username = obj.getString("username")
+                val password = obj.getString("password")
+                
+                // Check if site already exists
+                val existing = database.entryDao().getAll().find { it.site == site }
+                if (existing == null) {
+                    val entry = Entry(
+                        id = java.util.UUID.randomUUID().toString(),
+                        site = site,
+                        username = username,
+                        passwordEncrypted = encryptPassword(password),
+                        url = obj.optString("url", ""),
+                        notes = obj.optString("notes", ""),
+                        createdAt = System.currentTimeMillis()
+                    )
+                    database.entryDao().insert(entry)
+                    imported++
+                }
+            }
+            
+            loadEntries()
+            Toast.makeText(this, "Imported $imported entries", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun exportToUri(uri: android.net.Uri) {
+        try {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val entries = database.entryDao().getAll()
+                val jsonArray = JSONArray()
+                
+                for (entry in entries) {
+                    val obj = JSONObject().apply {
+                        put("site", entry.site)
+                        put("username", entry.username)
+                        put("password", decryptPassword(entry.passwordEncrypted) ?: "")
+                        put("url", entry.url)
+                        put("notes", entry.notes)
+                    }
+                    jsonArray.put(obj)
+                }
+                
+                withContext(Dispatchers.Main) {
+                    contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(jsonArray.toString(2).toByteArray())
+                    }
+                    Toast.makeText(this@MainActivity, "Exported ${entries.size} entries", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 }
