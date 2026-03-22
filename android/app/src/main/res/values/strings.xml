@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Password Manager</string>
+    
+    <!-- Auth -->
+    <string name="password">Password</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="set_password">Set Password</string>
+    <string name="unlock">Unlock</string>
+    <string name="exit">Exit</string>
+    
+    <!-- Entries -->
+    <string name="add_entry">Add Entry</string>
+    <string name="site">Site</string>
+    <string name="username">Username</string>
+    <string name="url">URL</string>
+    <string name="notes">Notes</string>
+    <string name="url_optional">URL (optional)</string>
+    <string name="notes_optional">Notes (optional)</string>
+    
+    <!-- Actions -->
+    <string name="copy">Copy</string>
+    <string name="generate">Generate</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    
+    <!-- Empty States -->
+    <string name="empty_state">No passwords stored yet.\nTap + to add your first entry.</string>
+    
+    <!-- Messages -->
+    <string name="password_copied">Password copied</string>
+    <string name="entry_added">Entry added</string>
+    <string name="entry_deleted">Entry deleted</string>
+    <string name="password_too_short">Password too short</string>
+    <string name="passwords_dont_match">Passwords don\'t match</string>
+    <string name="invalid_password">Invalid password</string>
+</resources>
