@@ -309,7 +309,24 @@ class PasswordManager:
             return False
 
     def export_json(self, master_password: str) -> str:
-        """Export all entries as JSON"""
+        """
+        Export all entries as JSON
+        
+        Format (cross-compatible with Android and C):
+        {
+            "version": 1,
+            "entries": [
+                {
+                    "site": "github.com",
+                    "username": "user@example.com",
+                    "password": "secret123",
+                    "url": "https://github.com",
+                    "notes": "Work account",
+                    "category": "work"
+                }
+            ]
+        }
+        """
         if not self.verify_password(master_password):
             return "{}"
 
@@ -329,22 +346,43 @@ class PasswordManager:
                         entry['password_encrypted'], self.master_password_hash
                     )
                     del entry['password_encrypted']
+                    del entry['id']
+                    del entry['created_at']
+                    del entry['updated_at']
                     entries.append(entry)
 
-                return json.dumps(entries, indent=2)
+                export_data = {
+                    "version": 1,
+                    "app": "password-manager",
+                    "entries": entries
+                }
+                return json.dumps(export_data, indent=2)
         except Exception as e:
             print(f"Export error: {e}")
             return "{}"
 
     def import_json(self, json_data: str, master_password: str) -> int:
-        """Import entries from JSON"""
+        """
+        Import entries from JSON
+        
+        Supports both old format (array) and new format (object with entries array)
+        """
         if not self.verify_password(master_password):
             return 0
 
         count = 0
         try:
             data = json.loads(json_data)
-            for item in data:
+            
+            # Support both formats: {"entries": [...]} or [...]
+            if isinstance(data, dict) and "entries" in data:
+                entries = data["entries"]
+            elif isinstance(data, list):
+                entries = data
+            else:
+                return 0
+            
+            for item in entries:
                 if self.add_entry(
                     item['site'],
                     item['username'],

@@ -333,11 +333,18 @@ class MainActivity : AppCompatActivity() {
             val jsonString = reader.readText()
             reader.close()
             
-            val json = JSONArray(jsonString)
+            val json = JSONObject(jsonString)
+            // Support both new format {"entries": [...]} and old format [...]
+            val entriesArray = if (json.has("entries")) {
+                json.getJSONArray("entries")
+            } else {
+                json
+            }
+            
             var imported = 0
             
-            for (i in 0 until json.length()) {
-                val obj = json.getJSONObject(i)
+            for (i in 0 until entriesArray.length()) {
+                val obj = entriesArray.getJSONObject(i)
                 val site = obj.getString("site")
                 val username = obj.getString("username")
                 val password = obj.getString("password")
@@ -370,6 +377,7 @@ class MainActivity : AppCompatActivity() {
         try {
             lifecycleScope.launch(Dispatchers.IO) {
                 val entries = database.entryDao().getAll()
+                val jsonObject = JSONObject()
                 val jsonArray = JSONArray()
                 
                 for (entry in entries) {
@@ -383,9 +391,13 @@ class MainActivity : AppCompatActivity() {
                     jsonArray.put(obj)
                 }
                 
+                jsonObject.put("version", 1)
+                jsonObject.put("app", "password-manager")
+                jsonObject.put("entries", jsonArray)
+                
                 withContext(Dispatchers.Main) {
                     contentResolver.openOutputStream(uri)?.use { outputStream ->
-                        outputStream.write(jsonArray.toString(2).toByteArray())
+                        outputStream.write(jsonObject.toString(2).toByteArray())
                     }
                     Toast.makeText(this@MainActivity, "Exported ${entries.size} entries", Toast.LENGTH_SHORT).show()
                 }

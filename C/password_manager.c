@@ -556,6 +556,179 @@ static int pm_update_password(const char *site, const char *new_password) {
 }
 
 /**
+ * Export entries to JSON file
+ * Format compatible with Python and Android versions
+ */
+static int pm_export_json(const char *filename) {
+    FILE *fp = fopen(filename, "w");
+    if (!fp) {
+        fprintf(stderr, "Cannot open file for export: %s\n", filename);
+        return 0;
+    }
+    
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db,
+        "SELECT site, username, password_encrypted, url, notes, category FROM entries ORDER BY site",
+        -1, &stmt, NULL) != SQLITE_OK) {
+        fclose(fp);
+        return 0;
+    }
+    
+    fprintf(fp, "{\n");
+    fprintf(fp, "  \"version\": 1,\n");
+    fprintf(fp, "  \"app\": \"password-manager\",\n");
+    fprintf(fp, "  \"entries\": [\n");
+    
+    int first = 1;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *site = (const char *)sqlite3_column_text(stmt, 0);
+        const char *username = (const char *)sqlite3_column_text(stmt, 1);
+        const char *encrypted = (const char *)sqlite3_column_text(stmt, 2);
+        const char *url = (const char *)sqlite3_column_text(stmt, 3);
+        const char *notes = (const char *)sqlite3_column_text(stmt, 4);
+        const char *category = (const char *)sqlite3_column_text(stmt, 5);
+        
+        // Decrypt password
+        char password[MAX_PASS_LEN];
+        int password_len;
+        if (!decrypt_aes_256_gcm(encrypted, master_password_hash, password, &password_len)) {
+            strcpy(password, "");
+        }
+        
+        if (!first) fprintf(fp, ",\n");
+        first = 0;
+        
+        fprintf(fp, "    {\n");
+        fprintf(fp, "      \"site\": \"%s\",\n", site ? site : "");
+        fprintf(fp, "      \"username\": \"%s\",\n", username ? username : "");
+        fprintf(fp, "      \"password\": \"%s\",\n", password);
+        fprintf(fp, "      \"url\": \"%s\",\n", url ? url : "");
+        fprintf(fp, "      \"notes\": \"%s\",\n", notes ? notes : "");
+        fprintf(fp, "      \"category\": \"%s\"\n", category ? category : "");
+        fprintf(fp, "    }");
+    }
+    
+    fprintf(fp, "\n  ]\n");
+    fprintf(fp, "}\n");
+    
+    sqlite3_finalize(stmt);
+    fclose(fp);
+    return 1;
+}
+
+/**
+ * Import entries from JSON file
+ * Format compatible with Python and Android versions
+ */
+static int pm_import_json(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        fprintf(stderr, "Cannot open file for import: %s\n", filename);
+        return 0;
+    }
+    
+    // Read file content
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    
+    char *content = malloc(fsize + 1);
+    fread(content, 1, fsize, fp);
+    content[fsize] = '\0';
+    fclose(fp);
+    
+    // Simple JSON parser for import
+    // Looks for "site", "username", "password", "url", "notes", "category" fields
+    int count = 0;
+    char site[MAX_SITE_LEN] = {0};
+    char username[MAX_USER_LEN] = {0};
+    char password[MAX_PASS_LEN] = {0};
+    char url[MAX_URL_LEN] = {0};
+    char notes[MAX_NOTES_LEN] = {0};
+    char category[MAX_CAT_LEN] = {0};
+    
+    char *p = content;
+    char *end = content + fsize;
+    
+    while (p < end) {
+        // Find "site":"
+        if (strstr(p, "\"site\":\"")) {
+            p = strstr(p, "\"site\":\"") + 8;
+            char *q = strchr(p, '"');
+            if (q && q < end) {
+                strncpy(site, p, q - p);
+                site[q - p] = '\0';
+            }
+        }
+        // Find "username":"
+        else if (strstr(p, "\"username\":\"")) {
+            p = strstr(p, "\"username\":\"") + 12;
+            char *q = strchr(p, '"');
+            if (q && q < end) {
+                strncpy(username, p, q - p);
+                username[q - p] = '\0';
+            }
+        }
+        // Find "password":"
+        else if (strstr(p, "\"password\":\"")) {
+            p = strstr(p, "\"password\":\"") + 12;
+            char *q = strchr(p, '"');
+            if (q && q < end) {
+                strncpy(password, p, q - p);
+                password[q - p] = '\0';
+            }
+        }
+        // Find "url":"
+        else if (strstr(p, "\"url\":\"")) {
+            p = strstr(p, "\"url\":\"") + 7;
+            char *q = strchr(p, '"');
+            if (q && q < end) {
+                strncpy(url, p, q - p);
+                url[q - p] = '\0';
+            }
+        }
+        // Find "notes":"
+        else if (strstr(p, "\"notes\":\"")) {
+            p = strstr(p, "\"notes\":\"") + 9;
+            char *q = strchr(p, '"');
+            if (q && q < end) {
+                strncpy(notes, p, q - p);
+                notes[q - p] = '\0';
+            }
+        }
+        // Find "category":"
+        else if (strstr(p, "\"category\":\"")) {
+            p = strstr(p, "\"category\":\"") + 12;
+            char *q = strchr(p, '"');
+            if (q && q < end) {
+                strncpy(category, p, q - p);
+                category[q - p] = '\0';
+            }
+            
+            // End of entry - add it
+            if (site[0] && username[0] && password[0]) {
+                if (pm_add_entry(site, username, password, 
+                                url[0] ? url : NULL,
+                                notes[0] ? notes : NULL,
+                                category[0] ? category : NULL)) {
+                    count++;
+                }
+                memset(site, 0, sizeof(site));
+                memset(username, 0, sizeof(username));
+                memset(password, 0, sizeof(password));
+                memset(url, 0, sizeof(url));
+                memset(notes, 0, sizeof(notes));
+                memset(category, 0, sizeof(category));
+            }
+        }
+        p++;
+    }
+    
+    free(content);
+    return count;
+}
+
+/**
  * Decrypt and return password for an entry
  */
 static char *pm_decrypt_password(const char *encrypted) {
