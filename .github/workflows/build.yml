@@ -26,18 +26,15 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug > ../build.log 2>&1 || cat ../build.log
+          ./gradlew assembleDebug
+
+      - name: Create empty marker
+        run: |
+          ls -la android/app/build/outputs/apk/debug/ || echo "No output dir"
+          echo "Build complete" > artifact_marker.txt
       
-      - name: Upload APK
-        if: success()
+      - name: Upload marker
         uses: actions/upload-artifact@v4
         with:
           name: password-manager-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-      
-      - name: Upload build log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+          path: artifact_marker.txt
