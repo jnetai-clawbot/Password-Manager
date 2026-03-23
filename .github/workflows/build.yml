@@ -23,14 +23,10 @@ jobs:
         uses: android-actions/setup-android@v2
       
       - name: Build APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug 2>&1
-      
-      - name: Find APK
-        run: |
-          find . -name "*.apk" -type f 2>/dev/null
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: List build output
+        run: ls -la android/app/build/outputs/apk/debug/
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
