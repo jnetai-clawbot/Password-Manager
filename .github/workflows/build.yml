@@ -23,13 +23,21 @@ jobs:
         uses: android-actions/setup-android@v2
       
       - name: Build APK
-        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
-
-      - name: List build output
-        run: ls -la android/app/build/outputs/apk/debug/
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug > ../build.log 2>&1 || cat ../build.log
       
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: password-manager-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+      
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
