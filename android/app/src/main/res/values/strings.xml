@@ -8,6 +8,9 @@
     <string name="set_password">Set Password</string>
     <string name="unlock">Unlock</string>
     <string name="exit">Exit</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+    <string name="google_account">Google Account</string>
     
     <!-- Entries -->
     <string name="add_entry">Add Entry</string>

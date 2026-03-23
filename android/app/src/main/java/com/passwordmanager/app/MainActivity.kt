@@ -1,5 +1,6 @@
 package com.passwordmanager.app
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Base64
 import android.view.Menu
@@ -16,6 +17,9 @@ import com.passwordmanager.app.databinding.DialogAddEntryBinding
 import com.passwordmanager.app.databinding.DialogViewEntryBinding
 import com.passwordmanager.app.db.Entry
 import com.passwordmanager.app.db.EntryDatabase
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -23,13 +27,36 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.security.MessageDigest
 
 class MainActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivityMainBinding
     private lateinit var database: EntryDatabase
     private lateinit var adapter: EntriesAdapter
-    private var masterPasswordHash: String? = null
+    private lateinit var googleSignInClient: GoogleSignInClient
+    private var signedInEmail: String? = null
+    
+    private val googleSignInLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        task.addOnCompleteListener { accountTask ->
+            if (accountTask.isSuccessful) {
+                val account = accountTask.result
+                signedInEmail = account.email
+                // Store hash of email for session validation
+                val emailHash = hashString(account.email ?: "")
+                getSharedPreferences("auth", MODE_PRIVATE).edit()
+                    .putString("user_hash", emailHash)
+                    .apply()
+                Toast.makeText(this, "Welcome ${account.email}", Toast.LENGTH_SHORT).show()
+                loadEntries()
+            } else {
+                Toast.makeText(this, "Google Sign-In failed", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     
     private val importFileLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -49,121 +76,102 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         
         database = EntryDatabase.getInstance(this)
-        masterPasswordHash = getSharedPreferences("auth", MODE_PRIVATE).getString("master_hash", null)
         
+        setupGoogleSignIn()
         setSupportActionBar(binding.toolbar)
         
-        if (masterPasswordHash == null) {
-            showSetupDialog()
+        // Check if user is already signed in
+        val savedHash = getSharedPreferences("auth", MODE_PRIVATE).getString("user_hash", null)
+        val account = GoogleSignIn.getLastSignedInAccount(this)
+        if (account != null && savedHash != null) {
+            val currentHash = hashString(account.email ?: "")
+            if (currentHash == savedHash) {
+                signedInEmail = account.email
+                loadEntries()
+            } else {
+                showGoogleSignInDialog()
+            }
         } else {
-            showLoginDialog()
+            showGoogleSignInDialog()
         }
         
         setupRecyclerView()
         setupClickListeners()
     }
     
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.menu_main, menu)
-        return true
+    private fun setupGoogleSignIn() {
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .build()
+        
+        googleSignInClient = GoogleSignIn.getClient(this, gso)
     }
     
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_import -> {
-                importFileLauncher.launch("application/json")
-                true
+    private fun showGoogleSignInDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Password Manager")
+            .setMessage("Sign in with your Google account to access your passwords")
+            .setPositiveButton("Sign In with Google") { _, _ ->
+                signInWithGoogle()
             }
-            R.id.action_export -> {
-                exportFileLauncher.launch("passwords_backup.json")
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
+            .setCancelable(false)
+            .show()
+    }
+    
+    private fun signInWithGoogle() {
+        val signInIntent = googleSignInClient.signInIntent
+        googleSignInLauncher.launch(signInIntent)
+    }
+    
+    private fun signOut() {
+        googleSignInClient.signOut().addOnCompleteListener(this) {
+            signedInEmail = null
+            getSharedPreferences("auth", MODE_PRIVATE).edit().clear().apply()
+            showGoogleSignInDialog()
         }
+    }
+    
+    private fun hashString(input: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
     }
     
     private fun setupRecyclerView() {
         adapter = EntriesAdapter(
-            onClick = { entry -> showEntryDialog(entry) },
-            onCopyClick = { entry -> copyPassword(entry) }
+            onCopyClick = { entry -> copyPassword(entry) },
+            onViewClick = { entry -> showViewDialog(entry) }
         )
-        
         binding.recyclerEntries.layoutManager = LinearLayoutManager(this)
         binding.recyclerEntries.adapter = adapter
     }
     
     private fun setupClickListeners() {
-        binding.fabAdd.setOnClickListener {
-            showAddDialog()
+        binding.fabAdd.setOnClickListener { showAddDialog() }
+    }
+    
+    private fun loadEntries() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val entries = database.entryDao().getAll()
+            withContext(Dispatchers.Main) {
+                adapter.submitList(entries)
+                binding.tvEmptyState.visibility = if (entries.isEmpty()) View.VISIBLE else View.GONE
+                binding.recyclerEntries.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
+            }
         }
     }
     
-    private fun showSetupDialog() {
-        val dialogBinding = com.passwordmanager.app.databinding.DialogSetupBinding.inflate(layoutInflater)
-        
-        AlertDialog.Builder(this)
-            .setTitle("Set Up Master Password")
-            .setView(dialogBinding.root)
-            .setCancelable(false)
-            .setPositiveButton("Set Password") { _, _ ->
-                val password = dialogBinding.etPassword.text.toString()
-                val confirm = dialogBinding.etConfirm.text.toString()
-                
-                if (password.length < 4) {
-                    Toast.makeText(this, "Password too short", Toast.LENGTH_SHORT).show()
-                    showSetupDialog()
-                    return@setPositiveButton
-                }
-                
-                if (password != confirm) {
-                    Toast.makeText(this, "Passwords don't match", Toast.LENGTH_SHORT).show()
-                    showSetupDialog()
-                    return@setPositiveButton
-                }
-                
-                masterPasswordHash = hashPassword(password)
-                getSharedPreferences("auth", MODE_PRIVATE)
-                    .edit()
-                    .putString("master_hash", masterPasswordHash)
-                    .apply()
-                
-                Toast.makeText(this, "Master password set", Toast.LENGTH_SHORT).show()
-                loadEntries()
-            }
-            .show()
-    }
-    
-    private fun showLoginDialog() {
-        val dialogBinding = com.passwordmanager.app.databinding.DialogLoginBinding.inflate(layoutInflater)
-        
-        AlertDialog.Builder(this)
-            .setTitle("Enter Master Password")
-            .setView(dialogBinding.root)
-            .setCancelable(false)
-            .setPositiveButton("Unlock") { _, _ ->
-                val password = dialogBinding.etPassword.text.toString()
-                
-                if (hashPassword(password) != masterPasswordHash) {
-                    Toast.makeText(this, "Invalid password", Toast.LENGTH_SHORT).show()
-                    showLoginDialog()
-                    return@setPositiveButton
-                }
-                
-                Toast.makeText(this, "Welcome!", Toast.LENGTH_SHORT).show()
-                loadEntries()
-            }
-            .setNegativeButton("Exit") { _, _ ->
-                finish()
-            }
-            .show()
+    private fun copyPassword(entry: Entry) {
+        val password = decryptPassword(entry.passwordEncrypted)
+        if (password != null) {
+            val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+            val clip = android.content.ClipData.newPlainText("Password", password)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Password copied", Toast.LENGTH_SHORT).show()
+        }
     }
     
     private fun showAddDialog() {
         val dialogBinding = DialogAddEntryBinding.inflate(layoutInflater)
-        
-        dialogBinding.btnGenerate.setOnClickListener {
-            dialogBinding.etPassword.setText(generatePassword(16))
-        }
         
         AlertDialog.Builder(this)
             .setTitle("Add Entry")
@@ -178,55 +186,101 @@ class MainActivity : AppCompatActivity() {
                 if (site.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()) {
                     addEntry(site, username, password, url, notes)
                 } else {
-                    Toast.makeText(this, "Site, username, and password required", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Site, username and password required", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
     
-    private fun showEntryDialog(entry: Entry) {
-        val decryptedPassword = decryptPassword(entry.passwordEncrypted)
+    private fun addEntry(site: String, username: String, password: String, url: String, notes: String) {
+        val entry = Entry(
+            id = java.util.UUID.randomUUID().toString(),
+            site = site,
+            username = username,
+            passwordEncrypted = encryptPassword(password),
+            url = url,
+            notes = notes,
+            createdAt = System.currentTimeMillis()
+        )
+        
+        lifecycleScope.launch(Dispatchers.IO) {
+            database.entryDao().insert(entry)
+            withContext(Dispatchers.Main) {
+                loadEntries()
+                Toast.makeText(this@MainActivity, "Entry added", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    private fun showViewDialog(entry: Entry) {
         val dialogBinding = DialogViewEntryBinding.inflate(layoutInflater)
+        val decryptedPassword = decryptPassword(entry.passwordEncrypted) ?: ""
         
         dialogBinding.tvSite.text = entry.site
         dialogBinding.tvUsername.text = entry.username
-        dialogBinding.tvPassword.text = decryptedPassword ?: "••••••••"
+        dialogBinding.tvPassword.text = decryptedPassword
         dialogBinding.tvUrl.text = entry.url.ifEmpty { "-" }
         dialogBinding.tvNotes.text = entry.notes.ifEmpty { "-" }
         
         AlertDialog.Builder(this)
             .setTitle(entry.site)
             .setView(dialogBinding.root)
-            .setPositiveButton("OK", null)
-            .setNeutralButton("Copy Password") { _, _ ->
-                copyToClipboard(decryptedPassword ?: "")
+            .setPositiveButton("Edit") { _, _ ->
+                showEditDialog(entry)
             }
-            .setNegativeButton("Delete") { _, _ ->
-                deleteEntry(entry)
+            .setNegativeButton("Close", null)
+            .setNeutralButton("Copy Password") { _, _ ->
+                copyPassword(entry)
             }
             .show()
     }
     
-    private fun addEntry(site: String, username: String, password: String, url: String, notes: String) {
+    private fun showEditDialog(entry: Entry) {
+        val dialogBinding = DialogAddEntryBinding.inflate(layoutInflater)
+        dialogBinding.etSite.setText(entry.site)
+        dialogBinding.etUsername.setText(entry.username)
+        dialogBinding.etPassword.setText(decryptPassword(entry.passwordEncrypted))
+        dialogBinding.etUrl.setText(entry.url)
+        dialogBinding.etNotes.setText(entry.notes)
+        
+        AlertDialog.Builder(this)
+            .setTitle("Edit Entry")
+            .setView(dialogBinding.root)
+            .setPositiveButton("Save") { _, _ ->
+                val updatedEntry = entry.copy(
+                    site = dialogBinding.etSite.text.toString().trim(),
+                    username = dialogBinding.etUsername.text.toString().trim(),
+                    passwordEncrypted = encryptPassword(dialogBinding.etPassword.text.toString()),
+                    url = dialogBinding.etUrl.text.toString().trim(),
+                    notes = dialogBinding.etNotes.text.toString().trim()
+                )
+                updateEntry(updatedEntry)
+            }
+            .setNegativeButton("Cancel", null)
+            .setNeutralButton("Delete") { _, _ ->
+                showDeleteConfirmation(entry)
+            }
+            .show()
+    }
+    
+    private fun updateEntry(entry: Entry) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val encrypted = encryptPassword(password)
-            val entry = Entry(
-                id = java.util.UUID.randomUUID().toString(),
-                site = site,
-                username = username,
-                passwordEncrypted = encrypted,
-                url = url,
-                notes = notes,
-                createdAt = System.currentTimeMillis()
-            )
-            database.entryDao().insert(entry)
-            
+            database.entryDao().update(entry)
             withContext(Dispatchers.Main) {
                 loadEntries()
-                Toast.makeText(this@MainActivity, "Entry added", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Entry updated", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+    
+    private fun showDeleteConfirmation(entry: Entry) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Entry")
+            .setMessage("Delete ${entry.site}?")
+            .setPositiveButton("Delete") { _, _ -> deleteEntry(entry) }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
     
     private fun deleteEntry(entry: Entry) {
@@ -239,70 +293,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun loadEntries() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val entries = database.entryDao().getAll()
-            withContext(Dispatchers.Main) {
-                adapter.submitList(entries)
-                binding.tvEmpty.visibility = if (entries.isEmpty()) View.VISIBLE else View.GONE
-                binding.recyclerEntries.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
-            }
-        }
-    }
-    
-    private fun copyPassword(entry: Entry) {
-        val password = decryptPassword(entry.passwordEncrypted) ?: return
-        copyToClipboard(password)
-    }
-    
-    private fun copyToClipboard(text: String) {
-        android.content.ClipboardManager().let { cm ->
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("Password", text))
-        }
-        Toast.makeText(this, "Password copied", Toast.LENGTH_SHORT).show()
-    }
-    
-    private fun generatePassword(length: Int): String {
-        val charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-        return (1..length).map { charset.random() }.joinToString("")
-    }
-    
-    private fun hashPassword(password: String): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(password.toByteArray())
-        return hash.joinToString("") { "%02x".format(it) }
-    }
-    
     private fun encryptPassword(password: String): String {
-        val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
-        keyStore.load(null)
-        
-        if (!keyStore.containsAlias("pm_key")) {
-            val keyGenerator = java.security.KeyGenerator.getInstance(
-                java.security.KeyStore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
-            )
-            val spec = android.security.keystore.KeyGenParameterSpec.Builder(
-                "pm_key",
-                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
-            )
-                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build()
+        return try {
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
             
-            keyGenerator.init(spec)
-            keyGenerator.generateKey()
+            if (!keyStore.containsAlias("pm_key")) {
+                val kg = javax.crypto.KeyGenerator.getInstance(
+                    java.security.KeyStore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
+                )
+                val spec = android.security.keystore.KeyGenParameterSpec.Builder(
+                    "pm_key",
+                    java.security.KeyStore.KeyProperties.PURPOSE_ENCRYPT or java.security.KeyStore.KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(java.security.KeyStore.KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(java.security.KeyStore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .build()
+                
+                kg.init(spec)
+                kg.generateKey()
+            }
+            
+            val key = keyStore.getKey("pm_key", null) as javax.crypto.SecretKey
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
+            
+            val encrypted = cipher.doFinal(password.toByteArray())
+            val iv = cipher.iv
+            
+            val combined = iv + encrypted
+            Base64.encodeToString(combined, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            Base64.encodeToString(password.toByteArray(), Base64.NO_WRAP)
         }
-        
-        val key = keyStore.getKey("pm_key", null) as javax.crypto.SecretKey
-        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
-        
-        val encrypted = cipher.doFinal(password.toByteArray())
-        val iv = cipher.iv
-        
-        val combined = iv + encrypted
-        return Base64.encodeToString(combined, Base64.NO_WRAP)
     }
     
     private fun decryptPassword(encrypted: String): String? {
@@ -322,7 +346,34 @@ class MainActivity : AppCompatActivity() {
             
             String(cipher.doFinal(encryptedBytes))
         } catch (e: Exception) {
-            null
+            try {
+                String(Base64.decode(encrypted, Base64.NO_WRAP))
+            } catch (e2: Exception) {
+                null
+            }
+        }
+    }
+    
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+    
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_import -> {
+                importFileLauncher.launch("application/json")
+                true
+            }
+            R.id.action_export -> {
+                exportFileLauncher.launch("passwords_backup.json")
+                true
+            }
+            R.id.action_sign_out -> {
+                signOut()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
     }
     
@@ -334,7 +385,6 @@ class MainActivity : AppCompatActivity() {
             reader.close()
             
             val json = JSONObject(jsonString)
-            // Support both new format {"entries": [...]} and old format [...]
             val entriesArray = if (json.has("entries")) {
                 json.getJSONArray("entries")
             } else {
@@ -349,7 +399,6 @@ class MainActivity : AppCompatActivity() {
                 val username = obj.getString("username")
                 val password = obj.getString("password")
                 
-                // Check if site already exists
                 val existing = database.entryDao().getAll().find { it.site == site }
                 if (existing == null) {
                     val entry = Entry(
