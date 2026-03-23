@@ -22,13 +22,14 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
       
-      - name: Show directory
-        run: |
-          ls -la
-          ls -la android/
-      
       - name: Build APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew clean assembleDebug --stacktrace 2>&1 | tail -100
+          ./gradlew assembleDebug --stacktrace 2>&1 | tail -50
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: password-manager-apk
+          path: android/app/build/outputs/apk/debug/*.apk
