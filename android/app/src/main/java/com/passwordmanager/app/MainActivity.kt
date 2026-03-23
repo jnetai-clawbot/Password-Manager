@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.passwordmanager.app.databinding.ActivityMainBinding
 import com.passwordmanager.app.databinding.DialogAddEntryBinding
 import com.passwordmanager.app.databinding.DialogViewEntryBinding
+import com.passwordmanager.app.databinding.DialogLoginBinding
 import com.passwordmanager.app.db.Entry
 import com.passwordmanager.app.db.EntryDatabase
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -35,7 +36,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var database: EntryDatabase
     private lateinit var adapter: EntriesAdapter
     private lateinit var googleSignInClient: GoogleSignInClient
+    
     private var signedInEmail: String? = null
+    private var isAuthenticated = false
+    private var masterPasswordHash: String? = null
     
     private val googleSignInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -45,10 +49,10 @@ class MainActivity : AppCompatActivity() {
             if (accountTask.isSuccessful) {
                 val account = accountTask.result
                 signedInEmail = account.email
-                // Store hash of email for session validation
-                val emailHash = hashString(account.email ?: "")
+                isAuthenticated = true
                 getSharedPreferences("auth", MODE_PRIVATE).edit()
-                    .putString("user_hash", emailHash)
+                    .putString("auth_type", "google")
+                    .putString("user_email", account.email)
                     .apply()
                 Toast.makeText(this, "Welcome ${account.email}", Toast.LENGTH_SHORT).show()
                 loadEntries()
@@ -80,19 +84,23 @@ class MainActivity : AppCompatActivity() {
         setupGoogleSignIn()
         setSupportActionBar(binding.toolbar)
         
-        // Check if user is already signed in
-        val savedHash = getSharedPreferences("auth", MODE_PRIVATE).getString("user_hash", null)
-        val account = GoogleSignIn.getLastSignedInAccount(this)
-        if (account != null && savedHash != null) {
-            val currentHash = hashString(account.email ?: "")
-            if (currentHash == savedHash) {
+        // Check existing auth
+        val prefs = getSharedPreferences("auth", MODE_PRIVATE)
+        val authType = prefs.getString("auth_type", null)
+        
+        if (authType == "password") {
+            showLoginDialog()
+        } else if (authType == "google") {
+            val account = GoogleSignIn.getLastSignedInAccount(this)
+            if (account != null) {
                 signedInEmail = account.email
+                isAuthenticated = true
                 loadEntries()
             } else {
-                showGoogleSignInDialog()
+                showAuthChoiceDialog()
             }
         } else {
-            showGoogleSignInDialog()
+            showAuthChoiceDialog()
         }
         
         setupRecyclerView()
@@ -107,11 +115,95 @@ class MainActivity : AppCompatActivity() {
         googleSignInClient = GoogleSignIn.getClient(this, gso)
     }
     
-    private fun showGoogleSignInDialog() {
+    private fun showAuthChoiceDialog() {
+        val options = arrayOf("Sign in with Google", "Use Master Password")
+        
         AlertDialog.Builder(this)
             .setTitle("Password Manager")
-            .setMessage("Sign in with your Google account to access your passwords")
-            .setPositiveButton("Sign In with Google") { _, _ ->
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> signInWithGoogle()
+                    1 -> showSetupOrLoginDialog()
+                }
+            }
+            .setCancelable(false)
+            .show()
+    }
+    
+    private fun showSetupOrLoginDialog() {
+        val prefs = getSharedPreferences("auth", MODE_PRIVATE)
+        val existingHash = prefs.getString("master_hash", null)
+        
+        if (existingHash == null) {
+            showSetupDialog()
+        } else {
+            showLoginDialog()
+        }
+    }
+    
+    private fun showSetupDialog() {
+        val dialogBinding = DialogLoginBinding.inflate(layoutInflater)
+        dialogBinding.tvTitle.text = "Set Master Password"
+        dialogBinding.etPassword.hint = "Create Password (min 6 chars)"
+        dialogBinding.etConfirmPassword.visibility = View.VISIBLE
+        dialogBinding.tvConfirmLabel.visibility = View.VISIBLE
+        
+        AlertDialog.Builder(this)
+            .setView(dialogBinding.root)
+            .setPositiveButton("Set Password") { _, _ ->
+                val password = dialogBinding.etPassword.text.toString()
+                val confirm = dialogBinding.etConfirmPassword.text.toString()
+                
+                if (password.length < 6) {
+                    Toast.makeText(this, "Password too short", Toast.LENGTH_SHORT).show()
+                    showSetupDialog()
+                    return@setPositiveButton
+                }
+                
+                if (password != confirm) {
+                    Toast.makeText(this, "Passwords don't match", Toast.LENGTH_SHORT).show()
+                    showSetupDialog()
+                    return@setPositiveButton
+                }
+                
+                masterPasswordHash = hashString(password)
+                getSharedPreferences("auth", MODE_PRIVATE).edit()
+                    .putString("auth_type", "password")
+                    .putString("master_hash", masterPasswordHash)
+                    .apply()
+                
+                isAuthenticated = true
+                Toast.makeText(this, "Password set!", Toast.LENGTH_SHORT).show()
+            }
+            .setCancelable(false)
+            .show()
+    }
+    
+    private fun showLoginDialog() {
+        val dialogBinding = DialogLoginBinding.inflate(layoutInflater)
+        dialogBinding.tvTitle.text = "Enter Master Password"
+        dialogBinding.etConfirmPassword.visibility = View.GONE
+        dialogBinding.tvConfirmLabel.visibility = View.GONE
+        
+        AlertDialog.Builder(this)
+            .setView(dialogBinding.root)
+            .setPositiveButton("Unlock") { _, _ ->
+                val password = dialogBinding.etPassword.text.toString()
+                val hash = hashString(password)
+                
+                val prefs = getSharedPreferences("auth", MODE_PRIVATE)
+                val storedHash = prefs.getString("master_hash", null)
+                
+                if (hash == storedHash) {
+                    masterPasswordHash = hash
+                    isAuthenticated = true
+                    loadEntries()
+                } else {
+                    Toast.makeText(this, "Invalid password", Toast.LENGTH_SHORT).show()
+                    showLoginDialog()
+                }
+            }
+            .setNegativeButton("Use Google Instead") { _, _ ->
                 signInWithGoogle()
             }
             .setCancelable(false)
@@ -126,8 +218,9 @@ class MainActivity : AppCompatActivity() {
     private fun signOut() {
         googleSignInClient.signOut().addOnCompleteListener(this) {
             signedInEmail = null
+            isAuthenticated = false
             getSharedPreferences("auth", MODE_PRIVATE).edit().clear().apply()
-            showGoogleSignInDialog()
+            showAuthChoiceDialog()
         }
     }
     
@@ -146,7 +239,9 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupClickListeners() {
-        binding.fabAdd.setOnClickListener { showAddDialog() }
+        binding.fabAdd.setOnClickListener { 
+            if (isAuthenticated) showAddDialog() 
+        }
     }
     
     private fun loadEntries() {
