@@ -13,27 +13,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: Install JDK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y openjdk-17-jdk -qq > /dev/null 2>&1
+          java -version
 
-      - name: Setup Android SDK
-        uses: andy9dayne/action-android-sdk@v1
+      - name: Download Android command line tools
+        run: |
+          cd /tmp
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
+          unzip -q cmdline.zip
+          mkdir -p ~/android-sdk/cmdline-tools
+          mv cmdline-tools ~/android-sdk/cmdline-tools/latest
+          ls ~/android-sdk/cmdline-tools/latest/bin/
+
+      - name: Install Android SDK
+        run: |
+          export ANDROID_HOME=~/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>&1 | tail -5
 
       - name: Create local.properties
         run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "sdk.dir=$HOME/android-sdk" > local.properties
 
       - name: Build
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: clean assembleDebug
+        run: |
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon 2>&1 | tail -80
 
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: password-manager-debug
+          name: password-manager-apk
           path: app/build/outputs/apk/debug/*.apk
