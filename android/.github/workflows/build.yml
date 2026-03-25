@@ -19,34 +19,25 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Android SDK
-        run: |
-          cd /tmp
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
-          unzip -q cmdline.zip
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          mv cmdline-tools $HOME/android-sdk/cmdline-tools/latest
-          export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-
+      - name: Setup Android SDK
+        uses: mobile-devops/action-sdk@v3
+        with:
+          android: 'true'
+          androidsdk: '34'
+      
       - name: Create local.properties
         run: |
-          echo "sdk.dir=$HOME/android-sdk" > local.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
           cat local.properties
 
       - name: Build
-        env:
-          ANDROID_HOME: ${{ env.HOME }}/android-sdk
         run: |
           chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon 2>&1 | tail -50
+          ./gradlew clean assembleDebug --no-daemon 2>&1 | tail -60
 
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: APK
+          name: password-manager-debug
           path: app/build/outputs/apk/debug/*.apk
