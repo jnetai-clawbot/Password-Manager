@@ -27,7 +27,7 @@ jobs:
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace 2>&1 | tail -50
+          ./gradlew assembleDebug --stacktrace 2>&1 | tail -80
       
       - name: Create apk directory
         run: mkdir -p apk
@@ -38,8 +38,8 @@ jobs:
             cp app/build/outputs/apk/debug/*.apk apk/
             ls -la apk/
           else
-            echo "APK not found!"
-            ls -la app/build/outputs/ 2>/dev/null || echo "No outputs dir"
+            echo "APK not found - checking build output"
+            ls -la app/build/ 2>/dev/null || echo "No build dir"
           fi
       
       - name: Upload APK
