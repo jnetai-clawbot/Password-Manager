@@ -21,40 +21,47 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       
-      - name: Setup Android SDK
+      - name: Setup Android SDK with wget
         run: |
-          cd /home/user
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip
-          mkdir -p android-sdk/cmdline-tools/latest
-          mv cmdline-tools/* android-sdk/cmdline-tools/latest/ 2>/dev/null || true
-          export ANDROID_HOME=/home/user/android-sdk
+          mkdir -p android-sdk/cmdline-tools
+          cd android-sdk/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
+          unzip -q cmdline.zip
+          mv cmdline-tools latest
+          ls -la latest/bin/
+      
+      - name: Accept licenses and install SDK
+        env:
+          ANDROID_HOME: ${{ github.workspace }}/android-sdk
+        run: |
+          export ANDROID_HOME=${{ github.workspace }}/android-sdk
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          yes | sdkmanager --licenses > /dev/null 2>&1
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5
-          echo "SDK setup complete"
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -10
+      
+      - name: Create local.properties
+        run: |
+          echo "sdk.dir=${{ github.workspace }}/android-sdk" > local.properties
+          cat local.properties
       
       - name: Build APK
-        env:
-          ANDROID_HOME: /home/user/android-sdk
         run: |
-          export ANDROID_HOME=/home/user/android-sdk
+          export ANDROID_HOME=${{ github.workspace }}/android-sdk
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace 2>&1 | tail -100
+          ./gradlew clean assembleDebug --no-daemon 2>&1 | tail -100
       
       - name: Create apk directory
         run: mkdir -p apk
       
       - name: Copy APK
         run: |
-          if [ -f app/build/outputs/apk/debug/*.apk ]; then
+          if ls app/build/outputs/apk/debug/*.apk 2>/dev/null; then
             cp app/build/outputs/apk/debug/*.apk apk/
-            ls -la apk/
           else
-            echo "APK not found - checking build output"
-            ls -la app/build/ 2>/dev/null || echo "No build dir"
+            find app/build -name "*.apk" -exec cp {} apk/ \; 2>/dev/null || echo "No APK"
           fi
+          ls -la apk/
       
       - name: Upload APK
         if: always()
