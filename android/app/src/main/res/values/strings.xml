@@ -12,6 +12,7 @@
     <string name="sign_in_with_google">Sign in with Google</string>
     <string name="google_account">Google Account</string>
     <string name="use_password">Use Password</string>
+    <string name="lock">Lock</string>
     
     <!-- Entries -->
     <string name="add_entry">Add Entry</string>
@@ -19,14 +20,19 @@
     <string name="username">Username</string>
     <string name="url">URL</string>
     <string name="notes">Notes</string>
+    <string name="category">Category</string>
     <string name="url_optional">URL (optional)</string>
     <string name="notes_optional">Notes (optional)</string>
     
     <!-- Actions -->
     <string name="copy">Copy</string>
+    <string name="copy_pass">Copy Pass</string>
+    <string name="copy_user">Copy User</string>
     <string name="generate">Generate</string>
     <string name="delete">Delete</string>
     <string name="cancel">Cancel</string>
+    <string name="get_password">Get Password</string>
+    <string name="edit_entry">Edit Entry</string>
     
     <!-- Empty States -->
     <string name="empty_state">No passwords stored yet.\nTap + to add your first entry.</string>
@@ -42,4 +48,7 @@
     <!-- Import/Export -->
     <string name="import_entries">Import Passwords</string>
     <string name="export_entries">Export Passwords</string>
+    
+    <!-- About -->
+    <string name="about">About</string>
 </resources>

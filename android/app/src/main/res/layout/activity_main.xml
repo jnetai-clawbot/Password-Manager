@@ -28,9 +28,53 @@
         android:orientation="vertical"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
+        <!-- Search and Filter Bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:background="@color/surface">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Search..."
+                app:boxBackgroundMode="outline"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etSearch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <Spinner
+                android:id="@+id/spinnerCategory"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="8dp"
+                android:minWidth="100dp" />
+
+        </LinearLayout>
+
+        <!-- Results Count -->
+        <TextView
+            android:id="@+id/tvResultsCount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="8dp"
+            android:text="0 entries"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
         <!-- Empty State -->
         <TextView
-            android:id="@+id/tvEmpty"
+            android:id="@+id/tvEmptyState"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:gravity="center"

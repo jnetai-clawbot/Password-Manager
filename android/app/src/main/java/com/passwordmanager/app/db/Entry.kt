@@ -12,6 +12,7 @@ data class Entry(
     val passwordEncrypted: String,
     val url: String = "",
     val notes: String = "",
+    val category: String = "general",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

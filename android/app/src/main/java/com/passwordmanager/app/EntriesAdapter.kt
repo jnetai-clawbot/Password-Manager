@@ -9,7 +9,7 @@ import com.passwordmanager.app.databinding.ItemEntryBinding
 import com.passwordmanager.app.db.Entry
 
 class EntriesAdapter(
-    private val onClick: (Entry) -> Unit,
+    private val onViewClick: (Entry) -> Unit,
     private val onCopyClick: (Entry) -> Unit
 ) : ListAdapter<Entry, EntriesAdapter.EntryViewHolder>(EntryDiffCallback()) {
 
@@ -33,9 +33,16 @@ class EntriesAdapter(
         fun bind(entry: Entry) {
             binding.tvSite.text = entry.site
             binding.tvUsername.text = entry.username
+            binding.tvCategory.text = entry.category
             
-            binding.root.setOnClickListener { onClick(entry) }
+            binding.root.setOnClickListener { onViewClick(entry) }
             binding.btnCopy.setOnClickListener { onCopyClick(entry) }
+            binding.btnCopyUsername.setOnClickListener { 
+                val clipboard = binding.root.context.getSystemService(android.content.ClipboardManager::class.java)
+                val clip = android.content.ClipData.newPlainText("Username", entry.username)
+                clipboard.setPrimaryClip(clip)
+                android.widget.Toast.makeText(binding.root.context, "Username copied", android.widget.Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
