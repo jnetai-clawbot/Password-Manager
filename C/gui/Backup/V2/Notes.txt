@@ -1,0 +1,71 @@
+# C GTK3 GUI Notes
+
+## Status: WORKING ✅
+
+### Database Path
+- Database file: `./passwords.db` (in current directory where you run the app)
+- Previously was `/root/.passwords.db` (wrong user)
+- Fixed to use current working directory
+
+### Build Instructions
+
+**To compile the GUI:**
+```bash
+cd /home/jay/Documents/Scripts/AI/openclaw/job17/C
+make gui
+```
+
+**Exact gcc command used:**
+```bash
+gcc -Wall -Wextra -O2 -std=c11 -o gui/password_manager_gui gui/password_manager_gui.c \
+    -lcrypto -lsqlite3 \
+    -I/usr/include/gtk-3.0 -I/usr/include/pango-1.0 -I/usr/include/glib-2.0 \
+    -I/usr/include/harfbuzz -I/usr/include/cairo \
+    -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/atk-1.0 \
+    -I/usr/lib/aarch64-linux-gnu/glib-2.0/include \
+    -lgtk-3 -lgdk-3 -lpangocairo-1.0 -lpango-1.0 -lharfbuzz \
+    -latk-1.0 -lcairo-gobject -lcairo -lgdk_pixbuf-2.0 -lgio-2.0 \
+    -lgobject-2.0 -lglib-2.0
+```
+
+**To run:**
+```bash
+cd /home/jay/Documents/Scripts/AI/openclaw/job17/C
+rm -f passwords.db  # Optional: start fresh
+./gui/password_manager_gui
+```
+Running in Debug Mode:
+
+./password_manager_gui 2>&1 | head -50
+
+Or
+./password_manager_gui 2>&1 | grep -i "debug"
+
+
+### Features
+- Login/Setup screens
+- Main menu with 9 buttons
+- Add/Get/List/Delete entries
+- Generate passwords (fills password field in Add Entry)
+- Notes field for each entry (compatible with Python version)
+- Export/Import JSON (includes notes for Python compatibility)
+- Lock/About
+
+### Issues Fixed
+1. ✅ Buffer overflow fixed - now uses parameterized SQL queries
+2. ✅ Generate password button fills password field in Add Entry
+3. ✅ Notes field added to entries
+4. ✅ Export/Import JSON includes notes field for Python compatibility
+5. ✅ Build instructions added
+
+### Test Results
+| Feature             | Status |
+| ------------------- | ------ |
+| Database path       | ✅ ./passwords.db |
+| Setup working       | ✅ |
+| Login               | ✅ |
+| Add Entry           | ✅ (with notes) |
+| Get/List/Delete     | ✅ |
+| Generate passwords  | ✅ (fills field) |
+| Export/Import JSON  | ✅ (with notes) |
+| About/Lock          | ✅ |

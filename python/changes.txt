@@ -1,0 +1,34 @@
+# Changes Log - Password Manager Python Version
+
+## 2026-03-25
+
+### New Files Created
+- `password_manager.py` - Core module with all encryption/database functions
+- `password_manager_menu.py` - Interactive console menu interface
+- `password_manager_gui.py` - Tkinter GUI interface
+
+### Features Added
+- **Three interfaces**: CLI, Menu, and GUI - all work with same database
+- **--reset option**: Deletes database to allow fresh setup (DANGER! Type 'yes' to confirm)
+- **--gui option**: Launch GUI from CLI
+- **--menu option**: Launch menu from CLI
+- **--password=XXX**: Pass password without prompting (for scripting)
+- **Auto-generate password**: GUI add form auto-generates a random password
+
+### Fixed Issues
+- Removed erroneous `pip install sqlite3` from setup.sh (sqlite3 is built-in)
+- Fixed main() hanging issue by restructuring CLI argument handling
+- Terminal warning about TERM variable suppressed
+
+### Database Location
+- `~/.passwords.db` (in user's home directory)
+
+### CLI Examples
+```bash
+python3 password_manager.py --init --password=MYSTRONGPASS
+python3 password_manager.py --add github.com me secret123 --password=MYSTRONGPASS
+python3 password_manager.py --get github.com --password=MYSTRONGPASS
+python3 password_manager.py --list --password=MYSTRONGPASS
+python3 password_manager.py --generate
+python3 password_manager.py --reset
+```

@@ -1,0 +1,58 @@
+[
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/layout_dialog_generate.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_generate.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/layout_dialog_get_password.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_get_password.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/menu_menu_main.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/menu/menu_main.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/xml_data_extraction_rules.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/xml/data_extraction_rules.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/layout_dialog_add_entry.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_add_entry.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/layout_item_entry.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/layout/item_entry.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/layout_dialog_login.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_login.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/layout_activity_main.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/layout_dialog_setup.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_setup.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/xml_backup_rules.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/xml/backup_rules.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-merged_res-42:/layout_dialog_view_entry.xml.flat",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_view_entry.xml"
+    }
+]

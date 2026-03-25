@@ -1,0 +1,34 @@
+[
+    {
+        "merged": "com.passwordmanager.app-mergeDebugResources-41:/layout/dialog_view_entry.xml",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_view_entry.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-mergeDebugResources-41:/layout/activity_main.xml",
+        "source": "com.passwordmanager.app-main-44:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-mergeDebugResources-41:/layout/item_entry.xml",
+        "source": "com.passwordmanager.app-main-44:/layout/item_entry.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-mergeDebugResources-41:/layout/dialog_get_password.xml",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_get_password.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-mergeDebugResources-41:/layout/dialog_login.xml",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_login.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-mergeDebugResources-41:/layout/dialog_add_entry.xml",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_add_entry.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-mergeDebugResources-41:/layout/dialog_generate.xml",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_generate.xml"
+    },
+    {
+        "merged": "com.passwordmanager.app-mergeDebugResources-41:/layout/dialog_setup.xml",
+        "source": "com.passwordmanager.app-main-44:/layout/dialog_setup.xml"
+    }
+]

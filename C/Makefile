@@ -1,48 +1,32 @@
-# Makefile for Password Manager (C Version)
-# Requires: OpenSSL, SQLite3
-
 CC = gcc
 CFLAGS = -Wall -Wextra -O2 -std=c11
 LDFLAGS = -lcrypto -lsqlite3
 
-# Target
-TARGET = password_manager
+all: password_manager
 
-# Source files
-SOURCES = password_manager.c
+password_manager: password_manager.c
+	$(CC) $(CFLAGS) -o password_manager password_manager.c $(LDFLAGS)
 
-.PHONY: all clean install test
-
-all: $(TARGET)
-
-$(TARGET): $(SOURCES)
-	$(CC) $(CFLAGS) -o $@ $(SOURCES) $(LDFLAGS)
+gui: gui/password_manager_gui.c
+	$(CC) $(CFLAGS) -o gui/password_manager_gui gui/password_manager_gui.c \
+		$(LDFLAGS) \
+		-I/usr/include/gtk-3.0 -I/usr/include/pango-1.0 -I/usr/include/glib-2.0 \
+		-I/usr/include/harfbuzz -I/usr/include/cairo \
+		-I/usr/include/gdk-pixbuf-2.0 -I/usr/include/atk-1.0 \
+		-I/usr/lib/aarch64-linux-gnu/glib-2.0/include \
+		-lgtk-3 -lgdk-3 -lpangocairo-1.0 -lpango-1.0 -lharfbuzz \
+		-latk-1.0 -lcairo-gobject -lcairo -lgdk_pixbuf-2.0 -lgio-2.0 \
+		-lgobject-2.0 -lglib-2.0
 
 clean:
-	rm -f $(TARGET) passwords.db
+	rm -f password_manager passwords.db
+	rm -f gui/password_manager_gui
 
-test: $(TARGET)
-	@echo "=== Password Manager Test ==="
-	@echo ""
-	@echo "1. Initializing database..."
-	@echo "testpassword" | ./$(TARGET) --init --db test_passwords.db
-	@echo ""
-	@echo "2. Adding test entries..."
-	./$(TARGET) --add github.com user@example.com secret123 --db test_passwords.db
-	./$(TARGET) --add gmail.com another@example.com anotherpass --db test_passwords.db
-	@echo ""
-	@echo "3. Listing entries..."
-	./$(TARGET) --list --db test_passwords.db
-	@echo ""
-	@echo "4. Getting password..."
-	./$(TARGET) --get github.com --db test_passwords.db
-	@echo ""
-	@echo "=== Test complete ==="
+test: password_manager
+	rm -f passwords.db
+	echo "testpass" | ./password_manager --init
+	echo "testpass" | ./password_manager --add github.com testuser secret123
+	echo "testpass" | ./password_manager --get github.com
+	echo "testpass" | ./password_manager --list
 
-install: $(TARGET)
-	cp $(TARGET) /usr/local/bin/
-	@echo "Installed to /usr/local/bin/$(TARGET)"
-
-# Debug build
-debug: CFLAGS += -g -DDEBUG
-debug: $(TARGET)
+.PHONY: all clean test gui

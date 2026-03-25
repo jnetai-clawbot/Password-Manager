@@ -1,0 +1,39 @@
+
+Password Manager For Python By J~Net 2026
+
+
+./start.sh
+
+
+
+Or manually
+
+python3 password_manager_gui.py
+
+
+## Issue: GUI not showing or not responding
+
+### Cause
+The database already has a master password set. When you click "Reset" and set a new password, it fails because the old password is still there.
+
+### Solution
+Use CLI to reset:
+```bash
+rm ~/.passwords.db
+python3 password_manager_gui.py
+```
+
+Or use the menu version which works without display:
+```bash
+python3 password_manager_menu.py
+```
+
+
+UPDATE:
+This will now auto delete the db file if too many wrong passwords are tried too often (detect brute force attack and self delete the db file so passwords are not broken into)!
+
+
+
+
+
+

@@ -1,0 +1,39 @@
+# Changes - C GTK3 GUI
+
+## Pure C GTK3 implementation - COMPLETE!
+
+**742 lines of C code**
+
+### Features Implemented:
+- [x] Login screen with password entry + Enter key
+- [x] Setup screen for first-time users (min 8 chars)
+- [x] Main menu with compact 2-column grid (9 buttons)
+- [x] Add Entry (site, username, password)
+- [x] Get Password (shows decrypted)
+- [x] List All Entries (scrollable grid)
+- [x] Delete Entry
+- [x] Generate Password (8-64 chars)
+- [x] Export to JSON (encrypted)
+- [x] Import from JSON
+- [x] About screen
+- [x] Lock/Logout
+- [x] Auto-focus on text fields
+- [x] AES-256-GCM encryption matching C CLI
+- [x] Same SQLite database as C CLI
+
+### Layout
+- Window: 450x400 pixels (compact)
+- No wasted space, no scroll needed for menus
+- Grid-based button layout
+- Clear visual hierarchy
+
+### Build & Run
+```bash
+cd /home/jay/Documents/Scripts/AI/openclaw/job17/C
+make gui
+./gui/password_manager_gui
+```
+
+### Files
+- `gui/password_manager_gui.c` - Main source (742 lines)
+- `gui/password_manager_gui` - Compiled binary

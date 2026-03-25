@@ -1,524 +1,460 @@
+#!/usr/bin/env python3
 """
-Password Manager - Python Implementation
-Secure password storage with master password hash verification
+Password Manager - Core Module
+Secure password storage with AES-256-GCM encryption
+All CLI/GUI/menu versions import from this.
 """
 
-import hashlib
 import os
+import sys
 import json
-import sqlite3
+import hashlib
 import secrets
-import base64
+import string
+import sqlite3
 import getpass
-from typing import Optional, List, Dict
-from dataclasses import dataclass, asdict
-from datetime import datetime
+import time
+from cryptography.hazmat.primitives.ciphers.aead import AESGCMSIV
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
 
-try:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    CRYPTO_AVAILABLE = True
-except ImportError:
-    CRYPTO_AVAILABLE = False
-    print("Warning: cryptography not installed. Run: pip install cryptography")
+# Constants
+DB_PATH = os.path.expanduser("~/.passwords.db")
+LOCK_FILE = os.path.expanduser("~/.passwords.lock")
+KEY_LEN = 32
+SALT_LEN = 16
+NONCE_LEN = 12
+PBKDF2_ITER = 10000
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_DURATION = 300  # 5 minutes
 
+def get_password_hash(password):
+    """Get SHA-256 hash of password"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
-@dataclass
-class PasswordEntry:
-    """Represents a password entry"""
-    id: str
-    site: str
-    username: str
-    password_encrypted: str  # Encrypted with AES-256-GCM
-    url: str = ""
-    notes: str = ""
-    created_at: str = ""
-    updated_at: str = ""
-    category: str = ""
+def derive_key(password, salt):
+    """Derive encryption key from password using PBKDF2"""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=KEY_LEN,
+        salt=salt,
+        iterations=PBKDF2_ITER,
+    )
+    return kdf.derive(password.encode())
 
-    def __post_init__(self):
-        if not self.created_at:
-            self.created_at = datetime.now().isoformat()
-        if not self.updated_at:
-            self.updated_at = self.created_at
+def encrypt(plaintext, password):
+    """Encrypt plaintext using AES-256-GCM-SIV"""
+    salt = secrets.token_bytes(SALT_LEN)
+    nonce = secrets.token_bytes(NONCE_LEN)
+    key = derive_key(password, salt)
+    aesgcmsiv = AESGCMSIV(key)
+    ciphertext = aesgcmsiv.encrypt(nonce, plaintext.encode(), None)
+    return (salt + nonce + ciphertext).hex()
 
+def decrypt(encrypted_hex, password):
+    """Decrypt hex-encoded ciphertext"""
+    try:
+        data = bytes.fromhex(encrypted_hex)
+        salt = data[:SALT_LEN]
+        nonce = data[SALT_LEN:SALT_LEN+NONCE_LEN]
+        ciphertext = data[SALT_LEN+NONCE_LEN:]
+        key = derive_key(password, salt)
+        aesgcmsiv = AESGCMSIV(key)
+        return aesgcmsiv.decrypt(nonce, ciphertext, None).decode()
+    except Exception:
+        return None
 
-class Encryption:
-    """Handles AES-256-GCM encryption/decryption"""
+def init_db():
+    """Initialize the database"""
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS entries (
+        id TEXT PRIMARY KEY, site TEXT UNIQUE NOT NULL, username TEXT NOT NULL,
+        password_encrypted TEXT NOT NULL, url TEXT DEFAULT '', notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        category TEXT DEFAULT 'general')''')
+    conn.commit()
+    conn.close()
 
-    @staticmethod
-    def derive_key(password: str, salt: bytes) -> bytes:
-        """Derive 256-bit key from password using PBKDF2"""
-        return hashlib.pbkdf2_hmac(
-            'sha256',
-            password.encode('utf-8'),
-            salt,
-            100000,
-            dklen=32
-        )
+def db_get_setting(key):
+    """Get a setting from the database"""
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key = ?", (key,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
 
-    @staticmethod
-    def encrypt(plaintext: str, password: str) -> str:
-        """Encrypt data using AES-256-GCM"""
-        if not CRYPTO_AVAILABLE:
-            return base64.b64encode(plaintext.encode()).decode()
+def db_set_setting(key, value):
+    """Set a setting in the database"""
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+    conn.commit()
+    conn.close()
 
-        salt = os.urandom(16)
-        nonce = os.urandom(12)
-        key = Encryption.derive_key(password, salt)
-        aesgcm = AESGCM(key)
+def setup_password(password):
+    """Set up the master password - returns True if successful, False if already set"""
+    if db_get_setting("master_password_hash"):
+        return False
+    db_set_setting("master_password_hash", get_password_hash(password))
+    return True
 
-        ciphertext = aesgcm.encrypt(nonce, plaintext.encode('utf-8'), None)
+def verify_password(password):
+    """Verify the master password"""
+    stored = db_get_setting("master_password_hash")
+    return stored == get_password_hash(password)
 
-        # Combine: salt + nonce + ciphertext
-        encrypted = salt + nonce + ciphertext
-        return base64.b64encode(encrypted).decode('utf-8')
-
-    @staticmethod
-    def decrypt(encrypted_data: str, password: str) -> str:
-        """Decrypt AES-256-GCM encrypted data"""
-        if not CRYPTO_AVAILABLE:
-            return base64.b64decode(encrypted_data.encode()).decode()
-
-        try:
-            encrypted_bytes = base64.b64decode(encrypted_data.encode('utf-8'))
-
-            salt = encrypted_bytes[:16]
-            nonce = encrypted_bytes[16:28]
-            ciphertext = encrypted_bytes[28:]
-
-            key = Encryption.derive_key(password, salt)
-            aesgcm = AESGCM(key)
-
-            plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-            return plaintext.decode('utf-8')
-        except Exception as e:
-            print(f"Decryption error: {e}")
-            return ""
-
-    @staticmethod
-    def hash_password(password: str) -> str:
-        """Create SHA-256 hash of password (for verification, NOT encryption)"""
-        return hashlib.sha256(password.encode('utf-8')).hexdigest()
-
-    @staticmethod
-    def verify_password(password: str, password_hash: str) -> bool:
-        """Verify password against stored hash"""
-        return Encryption.hash_password(password) == password_hash
-
-
-class PasswordManager:
-    """Main password manager class"""
-
-    def __init__(self, db_path: str = None):
-        if db_path is None:
-            db_path = os.path.join(os.path.dirname(__file__), "passwords.db")
-        self.db_path = db_path
-        self.master_password_hash: Optional[str] = None
-        self._init_db()
-
-    def _init_db(self):
-        """Initialize SQLite database"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS entries (
-                    id TEXT PRIMARY KEY,
-                    site TEXT NOT NULL UNIQUE,
-                    username TEXT NOT NULL,
-                    password_encrypted TEXT NOT NULL,
-                    url TEXT DEFAULT '',
-                    notes TEXT DEFAULT '',
-                    created_at TEXT,
-                    updated_at TEXT,
-                    category TEXT DEFAULT ''
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )
-            """)
-            conn.commit()
-
-        # Load master password hash if exists
-        self.master_password_hash = self.get_setting("master_password_hash")
-
-    def get_setting(self, key: str) -> Optional[str]:
-        """Get a setting value"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
-            result = cursor.fetchone()
-            return result[0] if result else None
-
-    def set_setting(self, key: str, value: str):
-        """Set a setting value"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                (key, value)
-            )
-            conn.commit()
-
-    def setup_master_password(self, password: str) -> bool:
-        """
-        Set up initial master password
-        Stores SHA-256 hash of password (NOT the password itself)
-        """
-        if self.master_password_hash:
-            return False  # Already set up
-
-        self.master_password_hash = Encryption.hash_password(password)
-        self.set_setting("master_password_hash", self.master_password_hash)
+def reset_db():
+    """Delete the database to allow fresh setup"""
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
         return True
+    return False
 
-    def verify_password(self, password: str) -> bool:
-        """Verify master password"""
-        return Encryption.verify_password(password, self.master_password_hash)
-
-    def is_setup(self) -> bool:
-        """Check if master password is configured"""
-        return self.master_password_hash is not None
-
-    def add_entry(self, site: str, username: str, password: str,
-                  url: str = "", notes: str = "", category: str = "") -> bool:
-        """Add a new password entry"""
-        if not self.is_setup():
-            raise Exception("Master password not set up")
-
-        try:
-            encrypted_password = Encryption.encrypt(password, self.master_password_hash)
-            entry_id = secrets.token_urlsafe(16)
-            now = datetime.now().isoformat()
-
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO entries 
-                    (id, site, username, password_encrypted, url, notes, created_at, updated_at, category)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (entry_id, site, username, encrypted_password, url, notes, now, now, category))
-                conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error adding entry: {e}")
-            return False
-
-    def get_entry(self, site: str, master_password: str) -> Optional[Dict]:
-        """Get a password entry"""
-        if not self.verify_password(master_password):
-            return None
-
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM entries WHERE site = ?", (site,))
-                row = cursor.fetchone()
-
-                if row:
-                    columns = ['id', 'site', 'username', 'password_encrypted', 'url',
-                              'notes', 'created_at', 'updated_at', 'category']
-                    entry = dict(zip(columns, row))
-                    entry['password'] = Encryption.decrypt(
-                        entry['password_encrypted'], self.master_password_hash
-                    )
-                    del entry['password_encrypted']
-                    return entry
-                return None
-        except Exception as e:
-            print(f"Error getting entry: {e}")
-            return None
-
-    def list_entries(self, master_password: str) -> List[Dict]:
-        """List all entries (without decrypted passwords)"""
-        if not self.verify_password(master_password):
-            return []
-
-        entries = []
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT id, site, username, url, category, created_at FROM entries ORDER BY site")
-                rows = cursor.fetchall()
-
-                columns = ['id', 'site', 'username', 'url', 'category', 'created_at']
-                for row in rows:
-                    entries.append(dict(zip(columns, row)))
-        except Exception as e:
-            print(f"Error listing entries: {e}")
-        return entries
-
-    def update_entry(self, site: str, username: str = None, password: str = None,
-                    url: str = None, notes: str = None, category: str = None) -> bool:
-        """Update an existing entry"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
-                # Get current entry
-                cursor.execute("SELECT * FROM entries WHERE site = ?", (site,))
-                row = cursor.fetchone()
-                if not row:
-                    return False
-
-                columns = ['id', 'site', 'username', 'password_encrypted', 'url',
-                          'notes', 'created_at', 'updated_at', 'category']
-                current = dict(zip(columns, row))
-
-                # Update fields
-                new_username = username if username is not None else current['username']
-                new_url = url if url is not None else current['url']
-                new_notes = notes if notes is not None else current['notes']
-                new_category = category if category is not None else current['category']
-
-                if password:
-                    encrypted_password = Encryption.encrypt(password, self.master_password_hash)
-                else:
-                    encrypted_password = current['password_encrypted']
-
-                now = datetime.now().isoformat()
-
-                cursor.execute("""
-                    UPDATE entries SET
-                        username = ?,
-                        password_encrypted = ?,
-                        url = ?,
-                        notes = ?,
-                        updated_at = ?,
-                        category = ?
-                    WHERE site = ?
-                """, (new_username, encrypted_password, new_url, new_notes, now, new_category, site))
-                conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error updating entry: {e}")
-            return False
-
-    def delete_entry(self, site: str) -> bool:
-        """Delete an entry"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM entries WHERE site = ?", (site,))
-                conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error deleting entry: {e}")
-            return False
-
-    def export_json(self, master_password: str) -> str:
-        """
-        Export all entries as JSON
-        
-        Format (cross-compatible with Android and C):
-        {
-            "version": 1,
-            "entries": [
-                {
-                    "site": "github.com",
-                    "username": "user@example.com",
-                    "password": "secret123",
-                    "url": "https://github.com",
-                    "notes": "Work account",
-                    "category": "work"
-                }
-            ]
-        }
-        """
-        if not self.verify_password(master_password):
-            return "{}"
-
-        entries = []
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM entries ORDER BY site")
-                rows = cursor.fetchall()
-
-                columns = ['id', 'site', 'username', 'password_encrypted', 'url',
-                          'notes', 'created_at', 'updated_at', 'category']
-
-                for row in rows:
-                    entry = dict(zip(columns, row))
-                    entry['password'] = Encryption.decrypt(
-                        entry['password_encrypted'], self.master_password_hash
-                    )
-                    del entry['password_encrypted']
-                    del entry['id']
-                    del entry['created_at']
-                    del entry['updated_at']
-                    entries.append(entry)
-
-                export_data = {
-                    "version": 1,
-                    "app": "password-manager",
-                    "entries": entries
-                }
-                return json.dumps(export_data, indent=2)
-        except Exception as e:
-            print(f"Export error: {e}")
-            return "{}"
-
-    def import_json(self, json_data: str, master_password: str) -> int:
-        """
-        Import entries from JSON
-        
-        Supports both old format (array) and new format (object with entries array)
-        """
-        if not self.verify_password(master_password):
-            return 0
-
-        count = 0
-        try:
-            data = json.loads(json_data)
-            
-            # Support both formats: {"entries": [...]} or [...]
-            if isinstance(data, dict) and "entries" in data:
-                entries = data["entries"]
-            elif isinstance(data, list):
-                entries = data
-            else:
+# Brute force protection
+def get_failed_attempts():
+    """Get number of failed login attempts"""
+    if not os.path.exists(LOCK_FILE):
+        return 0
+    try:
+        with open(LOCK_FILE, 'r') as f:
+            data = json.load(f)
+            # Check if lockout has expired
+            if time.time() - data.get('first_failure', 0) > LOCKOUT_DURATION:
+                reset_failed_attempts()
                 return 0
-            
-            for item in entries:
-                if self.add_entry(
-                    item['site'],
-                    item['username'],
-                    item['password'],
-                    item.get('url', ''),
-                    item.get('notes', ''),
-                    item.get('category', '')
-                ):
+            return data.get('attempts', 0)
+    except:
+        return 0
+
+def record_failed_attempt():
+    """Record a failed login attempt"""
+    data = {'attempts': 0, 'first_failure': time.time()}
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, 'r') as f:
+                data = json.load(f)
+        except:
+            data = {'attempts': 0, 'first_failure': time.time()}
+    
+    data['attempts'] = data.get('attempts', 0) + 1
+    data['first_failure'] = data.get('first_failure', time.time())
+    
+    with open(LOCK_FILE, 'w') as f:
+        json.dump(data, f)
+    
+    if data['attempts'] >= MAX_FAILED_ATTEMPTS:
+        # Auto-delete database on too many failures
+        print(f"[SECURITY] Too many failed attempts ({MAX_FAILED_ATTEMPTS}). Deleting database!")
+        reset_db()
+        reset_failed_attempts()
+        return True  # Indicates database was deleted
+    return False
+
+def reset_failed_attempts():
+    """Reset failed attempts counter"""
+    if os.path.exists(LOCK_FILE):
+        os.remove(LOCK_FILE)
+
+def add_entry(site, username, password, master_password, url="", notes="", category="general"):
+    """Add a new entry"""
+    encrypted = encrypt(password, master_password)
+    entry_id = secrets.token_hex(16)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    try:
+        c.execute('''INSERT INTO entries (id, site, username, password_encrypted, url, notes, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?)''', (entry_id, site, username, encrypted, url, notes, category))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+def get_entry(site, master_password):
+    """Get an entry by site name"""
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute('''SELECT site, username, password_encrypted, url, notes, category FROM entries WHERE site = ?''', (site,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return None
+    decrypted_password = decrypt(row[2], master_password)
+    return {"site": row[0], "username": row[1], "password": decrypted_password,
+            "url": row[3], "notes": row[4], "category": row[5]}
+
+def list_entries(master_password):
+    """List all entries"""
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute('''SELECT site, username, password_encrypted, url, notes, category FROM entries ORDER BY site''')
+    rows = c.fetchall()
+    conn.close()
+    entries = []
+    for row in rows:
+        decrypted_password = decrypt(row[2], master_password)
+        entries.append({"site": row[0], "username": row[1], "password": decrypted_password,
+                       "url": row[3], "notes": row[4], "category": row[5]})
+    return {"entries": entries}
+
+def delete_entry(site):
+    """Delete an entry"""
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute("DELETE FROM entries WHERE site = ?", (site,))
+    conn.commit()
+    deleted = c.rowcount > 0
+    conn.close()
+    return deleted
+
+def update_password(site, new_password, master_password):
+    """Update password for an entry"""
+    encrypted = encrypt(new_password, master_password)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute('''UPDATE entries SET password_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE site = ?''', (encrypted, site))
+    conn.commit()
+    updated = c.rowcount > 0
+    conn.close()
+    return updated
+
+def update_entry(site, username, password, master_password, url="", notes="", category="general"):
+    """Update an existing entry"""
+    encrypted = encrypt(password, master_password)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute('''UPDATE entries SET username = ?, password_encrypted = ?, url = ?, notes = ?, 
+                 category = ?, updated_at = CURRENT_TIMESTAMP WHERE site = ?''',
+              (username, encrypted, url, notes, category, site))
+    conn.commit()
+    updated = c.rowcount > 0
+    conn.close()
+    return updated
+
+def export_json(filename):
+    """Export entries to JSON"""
+    if not db_get_setting("master_password_hash"):
+        return False
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    c = conn.cursor()
+    c.execute('''SELECT site, username, password_encrypted, url, notes, category FROM entries ORDER BY site''')
+    rows = c.fetchall()
+    conn.close()
+    entries = []
+    for row in rows:
+        entries.append({"site": row[0], "username": row[1], "password": row[2],
+                       "url": row[3], "notes": row[4], "category": row[5]})
+    with open(filename, 'w') as f:
+        json.dump({"entries": entries}, f, indent=2)
+    return True
+
+def import_json(filename, master_password):
+    """Import entries from JSON"""
+    try:
+        with open(filename, 'r') as f:
+            data = json.load(f)
+        count = 0
+        for entry in data.get("entries", []):
+            site = entry.get("site")
+            username = entry.get("username")
+            password = entry.get("password")
+            if site and username and password:
+                try:
+                    add_entry(site, username, password, master_password,
+                             entry.get("url", ""), entry.get("notes", ""), entry.get("category", "general"))
                     count += 1
-        except Exception as e:
-            print(f"Import error: {e}")
+                except sqlite3.IntegrityError:
+                    pass
         return count
+    except Exception:
+        return -1
 
-    def generate_password(self, length: int = 16) -> str:
-        """Generate a random secure password"""
-        charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-        return ''.join(secrets.choice(charset) for _ in range(length))
+def generate_password(length=16):
+    """Generate a random password"""
+    chars = string.ascii_letters + string.digits + "!@#$%^&*"
+    return ''.join(secrets.choice(chars) for _ in range(length))
 
+def print_usage():
+    print("""Usage: python3 password_manager.py [OPTIONS]
 
+Options:
+  --init              Initialize database with master password
+  --reset             Delete database and reset (DANGER! Loses all data!)
+  --add SITE USER PASS [URL] [NOTES] [CATEGORY]
+                     Add new entry
+  --get SITE          Get password for entry
+  --list              List all entries (JSON)
+  --delete SITE       Delete entry
+  --update SITE PASS  Update password for entry
+  --export FILE       Export entries to JSON
+  --import FILE       Import entries from JSON
+  --generate [LEN]    Generate random password (default: 16)
+  --gui               Launch GUI version
+  --menu              Launch menu version
+  --help              Show this help
+""")
+
+# CLI Interface
 def main():
-    """Command-line interface"""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Password Manager")
-    parser.add_argument("--db", default="./passwords.db", help="Database path")
-    parser.add_argument("--init", action="store_true", help="Initialize with master password")
-    parser.add_argument("--add", nargs=3, metavar=("SITE", "USERNAME", "PASSWORD"),
-                       help="Add an entry")
-    parser.add_argument("--list", action="store_true", help="List all entries")
-    parser.add_argument("--get", metavar="SITE", help="Get password for site")
-    parser.add_argument("--update", nargs=2, metavar=("SITE", "NEW_PASSWORD"),
-                       help="Update password for site")
-    parser.add_argument("--delete", metavar="SITE", help="Delete entry")
-    parser.add_argument("--export", metavar="FILE", help="Export to JSON")
-    parser.add_argument("--import", dest="import_file", metavar="FILE",
-                       help="Import from JSON")
-    parser.add_argument("--generate", type=int, metavar="LENGTH",
-                       help="Generate random password")
-    parser.add_argument("--password", help="Master password")
-
-    args = parser.parse_args()
-    pm = PasswordManager(args.db)
-
-    # Handle generate first (no password needed)
-    if args.generate:
-        print(pm.generate_password(args.generate))
+    init_db()
+    
+    # Check if locked out
+    failed = get_failed_attempts()
+    if failed >= MAX_FAILED_ATTEMPTS:
+        print(f"[ERROR] Too many failed attempts. Database has been deleted for security.")
+        print("[INFO] Run --init to set up a new master password")
         return
-
-    # Get master password
-    if args.password:
-        master_password = args.password
-    else:
-        master_password = getpass.getpass("Master password: ")
-
-    # Initialize
-    if args.init:
-        confirm = getpass.getpass("Confirm password: ")
-        if master_password != confirm:
-            print("Passwords don't match")
+    
+    args = sys.argv[1:]
+    
+    # Handle combined args like --password=xxx
+    cli_password = None
+    new_args = []
+    for arg in args:
+        if arg.startswith('--password='):
+            cli_password = arg.split('=', 1)[1]
+        elif arg == '--password' and cli_password is None:
+            continue  # Skip, next arg is password
+        else:
+            new_args.append(arg)
+    args = new_args
+    
+    # Handle --gui and --menu (launch and exit)
+    if '--gui' in args:
+        args.remove('--gui')
+        try:
+            from password_manager_gui import main as gui_main
+            gui_main()
             return
-        if pm.setup_master_password(master_password):
-            print("Master password set up successfully")
+        except Exception as e:
+            print(f"GUI failed: {e}, falling back to menu")
+    
+    if '--menu' in args:
+        args.remove('--menu')
+        from password_manager_menu import main as menu_main
+        menu_main()
+        return
+    
+    # No args = show help
+    if not args or '--help' in args:
+        print_usage()
+        return
+    
+    # Handle --reset first (no auth needed)
+    if '--reset' in args:
+        args.remove('--reset')
+        reset_failed_attempts()
+        confirm = input("DANGER! This will delete ALL passwords. Type 'yes' to confirm: ")
+        if confirm.lower() == 'yes':
+            reset_db()
+            print("[OK] Database reset. Run --init to set up new master password.")
         else:
-            print("Master password already set up")
+            print("[CANCELLED] Reset aborted.")
         return
-
-    # Verify password
-    if not pm.verify_password(master_password):
-        print("Invalid master password")
+    
+    # Handle --init (no auth needed)
+    if '--init' in args:
+        args.remove('--init')
+        reset_failed_attempts()
+        pw = cli_password if cli_password else getpass.getpass("Enter master password: ")
+        if len(pw) < 8:
+            print("[ERROR] Password must be at least 8 characters")
+            return
+        if setup_password(pw):
+            print("[OK] Master password set up successfully")
+        else:
+            print("[ERROR] Master password already set up. Use --reset to start over.")
         return
-
-    # List entries
-    if args.list:
-        entries = pm.list_entries(master_password)
-        print(f"\nStored entries ({len(entries)}):")
-        print("-" * 60)
-        for e in entries:
-            print(f"  {e['site']}")
-            print(f"    Username: {e['username']}")
-            if e['url']:
-                print(f"    URL: {e['url']}")
-            if e['category']:
-                print(f"    Category: {e['category']}")
-            print()
-
-    # Get entry
-    elif args.get:
-        entry = pm.get_entry(args.get, master_password)
+    
+    # All other actions require password
+    if get_failed_attempts() >= MAX_FAILED_ATTEMPTS:
+        print(f"[ERROR] Too many failed attempts. Database deleted for security.")
+        return
+    
+    pw = cli_password if cli_password else getpass.getpass("Enter master password: ")
+    if not verify_password(pw):
+        deleted = record_failed_attempt()
+        remaining = MAX_FAILED_ATTEMPTS - get_failed_attempts()
+        if deleted:
+            print(f"[SECURITY] Too many failed attempts. Database deleted.")
+        else:
+            print(f"[ERROR] Invalid master password. {remaining} attempts remaining.")
+        return
+    
+    # Success - reset counter
+    reset_failed_attempts()
+    
+    action = None
+    site = username = password = filename = None
+    url = notes = category = ""
+    
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == '--add' and i + 3 < len(args):
+            action = 'add'
+            site, username, password = args[i+1], args[i+2], args[i+3]
+            i += 4
+        elif arg == '--get' and i + 1 < len(args):
+            action, site = 'get', args[i+1]
+            i += 2
+        elif arg == '--list':
+            action, i = 'list', i+1
+        elif arg == '--delete' and i + 1 < len(args):
+            action, site = 'delete', args[i+1]
+            i += 2
+        elif arg == '--update' and i + 2 < len(args):
+            action, site, password = 'update', args[i+1], args[i+2]
+            i += 3
+        elif arg == '--export' and i + 1 < len(args):
+            action, filename = 'export', args[i+1]
+            i += 2
+        elif arg == '--import' and i + 1 < len(args):
+            action, filename = 'import', args[i+1]
+            i += 2
+        elif arg == '--generate':
+            action = 'generate'
+            if i + 1 < len(args) and args[i+1].isdigit():
+                action = 'generate_length'
+                length = int(args[i+1])
+                i += 2
+            else:
+                i += 1
+        else:
+            i += 1
+    
+    if action == 'generate':
+        print(generate_password())
+    elif action == 'generate_length':
+        print(generate_password(length))
+    elif action == 'add':
+        if add_entry(site, username, password, pw, url, notes, category):
+            print(f"[OK] Added entry: {site}")
+        else:
+            print("[ERROR] Failed to add entry")
+    elif action == 'get':
+        entry = get_entry(site, pw)
         if entry:
-            print(f"\nSite: {entry['site']}")
-            print(f"Username: {entry['username']}")
-            print(f"Password: {entry['password']}")
-            if entry['url']:
-                print(f"URL: {entry['url']}")
-            if entry['notes']:
-                print(f"Notes: {entry['notes']}")
+            print(f"\n  Site: {entry['site']}\n  Username: {entry['username']}\n  Password: {entry['password']}\n  URL: {entry['url']}\n")
         else:
-            print(f"Entry not found: {args.get}")
-
-    # Add entry
-    elif args.add:
-        site, username, password = args.add
-        if pm.add_entry(site, username, password):
-            print(f"Added entry: {site}")
-        else:
-            print("Failed to add entry")
-
-    # Update entry
-    elif args.update:
-        site, new_password = args.update
-        if pm.update_entry(site, password=new_password):
-            print(f"Updated entry: {site}")
-        else:
-            print("Failed to update entry")
-
-    # Delete entry
-    elif args.delete:
-        if pm.delete_entry(args.delete):
-            print(f"Deleted entry: {args.delete}")
-        else:
-            print("Failed to delete entry")
-
-    # Export
-    elif args.export:
-        json_data = pm.export_json(master_password)
-        with open(args.export, 'w') as f:
-            f.write(json_data)
-        print(f"Exported to {args.export}")
-
-    # Import
-    elif args.import_file:
-        with open(args.import_file, 'r') as f:
-            json_data = f.read()
-        count = pm.import_json(json_data, master_password)
-        print(f"Imported {count} entries")
-
+            print("[ERROR] Entry not found")
+    elif action == 'list':
+        print(json.dumps(list_entries(pw), indent=2))
+    elif action == 'delete':
+        print(f"[OK] Deleted entry: {site}" if delete_entry(site) else "[ERROR] Entry not found")
+    elif action == 'update':
+        print(f"[OK] Updated password for: {site}" if update_password(site, password, pw) else "[ERROR] Entry not found")
+    elif action == 'export':
+        print(f"[OK] Exported entries to: {filename}" if export_json(filename) else "[ERROR] Failed to export")
+    elif action == 'import':
+        count = import_json(filename, pw)
+        print(f"[OK] Imported {count} entries from: {filename}" if count >= 0 else "[ERROR] Failed to import")
+    else:
+        print_usage()
 
 if __name__ == "__main__":
     main()
