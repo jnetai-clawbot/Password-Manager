@@ -13,27 +13,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Setup Android SDK
-        uses: mobile-devops/action-sdk@v3
-        with:
-          android: 'true'
-          androidsdk: '34'
-      
+        uses: andy9dayne/action-android-sdk@v1
+
       - name: Create local.properties
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          cat local.properties
 
       - name: Build
-        run: |
-          chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon 2>&1 | tail -60
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: clean assembleDebug
 
       - name: Upload APK
         if: always()
