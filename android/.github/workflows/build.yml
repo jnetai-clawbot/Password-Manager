@@ -21,33 +21,31 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       
-      - name: Setup Android SDK with wget
-        run: |
-          mkdir -p android-sdk/cmdline-tools
-          cd android-sdk/cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
-          unzip -q cmdline.zip
-          mv cmdline-tools latest
-          ls -la latest/bin/
+      - name: Cache Android SDK
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.android/sdk
+            ~/android-sdk
+          key: android-sdk-34
       
-      - name: Accept licenses and install SDK
-        env:
-          ANDROID_HOME: ${{ github.workspace }}/android-sdk
-        run: |
-          export ANDROID_HOME=${{ github.workspace }}/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -10
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          api-level: 34
+          build-tools: "34.0.0"
       
       - name: Create local.properties
         run: |
-          echo "sdk.dir=${{ github.workspace }}/android-sdk" > local.properties
+          if [ -d "$ANDROID_HOME" ]; then
+            echo "sdk.dir=$ANDROID_HOME" > local.properties
+          elif [ -d "$HOME/.android/sdk" ]; then
+            echo "sdk.dir=$HOME/.android/sdk" > local.properties
+          fi
           cat local.properties
       
       - name: Build APK
         run: |
-          export ANDROID_HOME=${{ github.workspace }}/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon 2>&1 | tail -100
       
@@ -56,12 +54,11 @@ jobs:
       
       - name: Copy APK
         run: |
-          if ls app/build/outputs/apk/debug/*.apk 2>/dev/null; then
-            cp app/build/outputs/apk/debug/*.apk apk/
-          else
-            find app/build -name "*.apk" -exec cp {} apk/ \; 2>/dev/null || echo "No APK"
+          if [ -d app/build/outputs/apk/debug ]; then
+            cp app/build/outputs/apk/debug/*.apk apk/ 2>/dev/null || true
           fi
-          ls -la apk/
+          find app/build -name "*.apk" -exec cp {} apk/ \; 2>/dev/null || true
+          ls -la apk/ || echo "No APK"
       
       - name: Upload APK
         if: always()
@@ -69,3 +66,4 @@ jobs:
         with:
           name: password-manager-apk
           path: apk/*.apk
+          retention-days: 7
