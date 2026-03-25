@@ -2,68 +2,56 @@ name: Build Password Manager APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Set up JDK
+
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '17'
-      
-      - name: Cache Android SDK
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.android/sdk
-            ~/android-sdk
-          key: android-sdk-34
-      
+          distribution: 'temurin'
+
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
-        with:
-          api-level: 34
-          build-tools: "34.0.0"
-      
+        run: |
+          cd /opt
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wget unzip > /dev/null 2>&1
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          sudo unzip -q cmdline-tools.zip -d /opt/android-sdk
+          sudo mkdir -p /opt/android-sdk/cmdline-tools/latest
+          sudo mv /opt/android-sdk/cmdline-tools/bin /opt/android-sdk/cmdline-tools/latest/
+          sudo mv /opt/android-sdk/cmdline-tools/lib /opt/android-sdk/cmdline-tools/latest/
+          sudo mv /opt/android-sdk/cmdline-tools/NOTICE.txt /opt/android-sdk/cmdline-tools/latest/ 2>/dev/null || true
+          sudo mv /opt/android-sdk/cmdline-tools/source.properties /opt/android-sdk/cmdline-tools/latest/ 2>/dev/null || true
+          echo "export ANDROID_HOME=/opt/android-sdk" >> $GITHUB_ENV
+          echo "export PATH=\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools" >> $GITHUB_ENV
+          yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+          /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -3
+
       - name: Create local.properties
         run: |
-          if [ -d "$ANDROID_HOME" ]; then
-            echo "sdk.dir=$ANDROID_HOME" > local.properties
-          elif [ -d "$HOME/.android/sdk" ]; then
-            echo "sdk.dir=$HOME/.android/sdk" > local.properties
-          fi
+          echo "sdk.dir=/opt/android-sdk" > local.properties
           cat local.properties
-      
-      - name: Build APK
+
+      - name: Build
         run: |
           chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon 2>&1 | tail -100
-      
-      - name: Create apk directory
-        run: mkdir -p apk
-      
-      - name: Copy APK
-        run: |
-          if [ -d app/build/outputs/apk/debug ]; then
-            cp app/build/outputs/apk/debug/*.apk apk/ 2>/dev/null || true
-          fi
-          find app/build -name "*.apk" -exec cp {} apk/ \; 2>/dev/null || true
-          ls -la apk/ || echo "No APK"
-      
+          ./gradlew clean assembleDebug --no-daemon 2>&1
+
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: password-manager-apk
-          path: apk/*.apk
-          retention-days: 7
+          name: APK
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 1
