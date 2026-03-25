@@ -3,8 +3,6 @@ name: Build Password Manager APK
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -21,32 +19,30 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
+      - name: Install Android SDK
         run: |
-          cd /opt
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq wget unzip > /dev/null 2>&1
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-          sudo unzip -q cmdline-tools.zip -d /opt/android-sdk
-          sudo mkdir -p /opt/android-sdk/cmdline-tools/latest
-          sudo mv /opt/android-sdk/cmdline-tools/bin /opt/android-sdk/cmdline-tools/latest/
-          sudo mv /opt/android-sdk/cmdline-tools/lib /opt/android-sdk/cmdline-tools/latest/
-          sudo mv /opt/android-sdk/cmdline-tools/NOTICE.txt /opt/android-sdk/cmdline-tools/latest/ 2>/dev/null || true
-          sudo mv /opt/android-sdk/cmdline-tools/source.properties /opt/android-sdk/cmdline-tools/latest/ 2>/dev/null || true
-          echo "export ANDROID_HOME=/opt/android-sdk" >> $GITHUB_ENV
-          echo "export PATH=\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools" >> $GITHUB_ENV
-          yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -3
+          cd /tmp
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
+          unzip -q cmdline.zip
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          mv cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
 
       - name: Create local.properties
         run: |
-          echo "sdk.dir=/opt/android-sdk" > local.properties
+          echo "sdk.dir=$HOME/android-sdk" > local.properties
           cat local.properties
 
       - name: Build
+        env:
+          ANDROID_HOME: ${{ env.HOME }}/android-sdk
         run: |
           chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon 2>&1
+          ./gradlew clean assembleDebug --no-daemon 2>&1 | tail -50
 
       - name: Upload APK
         if: always()
@@ -54,4 +50,3 @@ jobs:
         with:
           name: APK
           path: app/build/outputs/apk/debug/*.apk
-          retention-days: 1
