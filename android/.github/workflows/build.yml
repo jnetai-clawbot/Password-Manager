@@ -22,12 +22,26 @@ jobs:
           java-version: '17'
       
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
+        run: |
+          cd /home/user
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          mkdir -p android-sdk/cmdline-tools/latest
+          mv cmdline-tools/* android-sdk/cmdline-tools/latest/ 2>/dev/null || true
+          export ANDROID_HOME=/home/user/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          yes | sdkmanager --licenses > /dev/null 2>&1
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5
+          echo "SDK setup complete"
       
       - name: Build APK
+        env:
+          ANDROID_HOME: /home/user/android-sdk
         run: |
+          export ANDROID_HOME=/home/user/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace 2>&1 | tail -80
+          ./gradlew assembleDebug --stacktrace 2>&1 | tail -100
       
       - name: Create apk directory
         run: mkdir -p apk
