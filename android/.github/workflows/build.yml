@@ -1,4 +1,4 @@
-name: Android Build
+name: Build APK
 
 on:
   push:
@@ -8,29 +8,44 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '17'
-
-      - name: Setup Android SDK
+          distribution: 'temurin'
+      
+      - name: Cache SDK
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.android/sdk
+            ~/android-sdk
+          key: ${{ runner.os }}-android-sdk
+      
+      - name: Setup SDK
         run: |
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -q -O /tmp/cmdline.zip
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          unzip -q /tmp/cmdline.zip -d $HOME/android-sdk/cmdline-tools
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest 2>/dev/null || true
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null 2>&1
-          echo "sdk.dir=$HOME/android-sdk" > local.properties
-
-      - name: Build APK
-        run: ./gradlew assembleDebug
-
-      - uses: actions/upload-artifact@v4
+          if [ ! -d "$HOME/android-sdk/cmdline-tools/latest/bin" ]; then
+            mkdir -p $HOME/android-sdk
+            cd /tmp
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
+            unzip -q cmdline.zip
+            mv cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          fi
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+      
+      - name: Create local.properties
+        run: echo "sdk.dir=$HOME/android-sdk" > local.properties
+      
+      - name: Build
+        run: chmod +x gradlew && ./gradlew assembleDebug
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: APK
           path: app/build/outputs/apk/debug/app-debug.apk
