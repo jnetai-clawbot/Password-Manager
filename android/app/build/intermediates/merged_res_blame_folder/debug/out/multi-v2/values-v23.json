@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.passwordmanager.app-mergeDebugResources-40:/values-v23/values-v23.xml",
+            "outputFile": "com.passwordmanager.app-mergeDebugResources-32:/values-v23/values-v23.xml",
             "map": [
                 {
                     "source": "/home/jay/.gradle/caches/transforms-3/7192bc092133145dc42fdafeebe5edee/transformed/cardview-1.0.0/res/values-v23/values-v23.xml",

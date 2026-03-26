@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.passwordmanager.app-mergeDebugResources-40:/values-en-rAU/values-en-rAU.xml",
+            "outputFile": "com.passwordmanager.app-mergeDebugResources-32:/values-en-rAU/values-en-rAU.xml",
             "map": [
                 {
                     "source": "/home/jay/.gradle/caches/transforms-3/4ef0423fab5802ecbc83ae3d2fb79271/transformed/biometric-1.1.0/res/values-en-rAU/values-en-rAU.xml",

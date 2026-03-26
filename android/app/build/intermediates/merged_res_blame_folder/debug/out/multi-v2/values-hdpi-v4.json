@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.passwordmanager.app-mergeDebugResources-40:/values-hdpi-v4/values-hdpi-v4.xml",
+            "outputFile": "com.passwordmanager.app-mergeDebugResources-32:/values-hdpi-v4/values-hdpi-v4.xml",
             "map": [
                 {
                     "source": "/home/jay/.gradle/caches/transforms-3/1390ed0e93696117e0bd1340aa2458d6/transformed/appcompat-1.6.1/res/values-hdpi-v4/values-hdpi-v4.xml",
