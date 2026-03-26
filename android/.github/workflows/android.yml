@@ -10,8 +10,6 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: android
       - uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -29,7 +27,7 @@ jobs:
         run: |
           echo "sdk.dir=$HOME/android-sdk" > local.properties
           chmod +x gradlew
-          ./gradlew clean assembleDebug
+          ./gradlew clean assembleDebug -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx2048m"
       - uses: actions/upload-artifact@v4
         with:
           name: apk
