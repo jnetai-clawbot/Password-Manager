@@ -78,7 +78,6 @@ class MainActivity : AppCompatActivity() {
         if (existingHash == null) {
             showSetupDialog()
         } else {
-                JSONArray().put(json)
             showLoginDialog()
         }
     }
@@ -160,8 +159,7 @@ class MainActivity : AppCompatActivity() {
                     masterPasswordHash = hash
                     isAuthenticated = true
                     loadEntries()
-                } else {
-                JSONArray().put(json)
+        } else {
                     Toast.makeText(this, "Invalid password", Toast.LENGTH_SHORT).show()
                     showLoginDialog()
                 }
@@ -185,8 +183,7 @@ class MainActivity : AppCompatActivity() {
                 val editText = (dialog as AlertDialog).findViewById<android.widget.EditText>(android.R.id.custom)
                 if (editText?.text.toString().lowercase() == "yes") {
                     resetDatabase()
-                } else {
-                JSONArray().put(json)
+        } else {
                     Toast.makeText(this, "Cancelled", Toast.LENGTH_SHORT).show()
                     showLoginDialog()
                 }
@@ -265,7 +262,6 @@ class MainActivity : AppCompatActivity() {
         val countText = if (filtered.size == allEntries.size) {
             "${filtered.size} entries"
         } else {
-                JSONArray().put(json)
             "Showing ${filtered.size} of ${allEntries.size} entries"
         }
         binding.tvResultsCount.text = countText
@@ -341,8 +337,7 @@ class MainActivity : AppCompatActivity() {
                 
                 if (site.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()) {
                     addEntry(site, username, password, url, notes, category)
-                } else {
-                JSONArray().put(json)
+        } else {
                     Toast.makeText(this, "Site, username and password required", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -493,8 +488,7 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 if (entry != null) {
                     showViewDialog(entry)
-                } else {
-                JSONArray().put(json)
+        } else {
                     Toast.makeText(this@MainActivity, "Entry not found", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -548,8 +542,7 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 if (entry != null) {
                     deleteEntry(entry)
-                } else {
-                JSONArray().put(json)
+        } else {
                     Toast.makeText(this@MainActivity, "Entry not found", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -683,8 +676,7 @@ class MainActivity : AppCompatActivity() {
             val json = JSONObject(jsonString)
             val entriesArray: org.json.JSONArray = if (json.has("entries")) {
                 json.getJSONArray("entries")
-            } else {
-                JSONArray().put(json)
+        } else {
             }
             
             var imported = 0
