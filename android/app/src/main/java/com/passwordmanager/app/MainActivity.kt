@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         if (existingHash == null) {
             showSetupDialog()
         } else {
+                JSONArray().put(json)
             showLoginDialog()
         }
     }
@@ -160,6 +161,7 @@ class MainActivity : AppCompatActivity() {
                     isAuthenticated = true
                     loadEntries()
                 } else {
+                JSONArray().put(json)
                     Toast.makeText(this, "Invalid password", Toast.LENGTH_SHORT).show()
                     showLoginDialog()
                 }
@@ -184,6 +186,7 @@ class MainActivity : AppCompatActivity() {
                 if (editText?.text.toString().lowercase() == "yes") {
                     resetDatabase()
                 } else {
+                JSONArray().put(json)
                     Toast.makeText(this, "Cancelled", Toast.LENGTH_SHORT).show()
                     showLoginDialog()
                 }
@@ -262,6 +265,7 @@ class MainActivity : AppCompatActivity() {
         val countText = if (filtered.size == allEntries.size) {
             "${filtered.size} entries"
         } else {
+                JSONArray().put(json)
             "Showing ${filtered.size} of ${allEntries.size} entries"
         }
         binding.tvResultsCount.text = countText
@@ -338,6 +342,7 @@ class MainActivity : AppCompatActivity() {
                 if (site.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()) {
                     addEntry(site, username, password, url, notes, category)
                 } else {
+                JSONArray().put(json)
                     Toast.makeText(this, "Site, username and password required", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -489,6 +494,7 @@ class MainActivity : AppCompatActivity() {
                 if (entry != null) {
                     showViewDialog(entry)
                 } else {
+                JSONArray().put(json)
                     Toast.makeText(this@MainActivity, "Entry not found", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -543,6 +549,7 @@ class MainActivity : AppCompatActivity() {
                 if (entry != null) {
                     deleteEntry(entry)
                 } else {
+                JSONArray().put(json)
                     Toast.makeText(this@MainActivity, "Entry not found", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -674,10 +681,10 @@ class MainActivity : AppCompatActivity() {
             reader.close()
             
             val json = JSONObject(jsonString)
-            val entriesArray = if (json.has("entries")) {
+            val entriesArray: org.json.JSONArray = if (json.has("entries")) {
                 json.getJSONArray("entries")
             } else {
-                json
+                JSONArray().put(json)
             }
             
             var imported = 0
