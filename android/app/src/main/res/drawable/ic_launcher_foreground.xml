@@ -12,14 +12,13 @@
         <path
             android:fillColor="#FFFFFF"
             android:pathData="M54,27C40.7,27 30,37.7 30,51v12h-6v12h60v-12h-6V51C78,37.7 67.3,27 54,27z"/>
-        <!-- Keyhole -->
+        <!-- Keyhole circle as path (circle cx=54 cy=52 r=4) -->
         <path
             android:fillColor="#00D4FF"
-            android:pathData="M54,45c-4.4,0 -8,3.6 -8,8v3h-3v6h22v-6h-3v-3C62,48.6 58.4,45 54,45z"/>
-        <circle
+            android:pathData="M54,48c-2.2,0 -4,1.8 -4,4s1.8,4 4,4s4,-1.8 4,-4S56.2,48 54,48z"/>
+        <!-- Keyhole bottom -->
+        <path
             android:fillColor="#00D4FF"
-            android:cx="54"
-            android:cy="52"
-            android:r="4"/>
+            android:pathData="M54,56v6h-3v-6h3z"/>
     </group>
 </vector>
