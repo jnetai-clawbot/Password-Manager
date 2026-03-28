@@ -556,14 +556,14 @@ class MainActivity : AppCompatActivity() {
             
             if (!keyStore.containsAlias("pm_key")) {
                 val kg = javax.crypto.KeyGenerator.getInstance(
-                    java.security.KeyStore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
+                    android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
                 )
                 val spec = android.security.keystore.KeyGenParameterSpec.Builder(
                     "pm_key",
-                    java.security.KeyStore.KeyProperties.PURPOSE_ENCRYPT or java.security.KeyStore.KeyProperties.PURPOSE_DECRYPT
+                    android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
                 )
-                    .setBlockModes(java.security.KeyStore.KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(java.security.KeyStore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(256)
                     .build()
                 
