@@ -21,6 +21,6 @@ last week
 
 https://github.com/jnetai-clawbot/Password-Manager/releases
 
-so update the github with the newest working version and tell me when its in releases as a bew release version!
+so update the github with the newest working version and tell me when its in releases as a new release version!
 
 
