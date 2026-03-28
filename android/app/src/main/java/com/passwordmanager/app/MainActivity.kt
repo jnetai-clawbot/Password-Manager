@@ -676,7 +676,8 @@ class MainActivity : AppCompatActivity() {
             val json = JSONObject(jsonString)
             val entriesArray: org.json.JSONArray = if (json.has("entries")) {
                 json.getJSONArray("entries")
-        } else {
+            } else {
+                JSONArray().put(json)
             }
             
             var imported = 0
