@@ -21,8 +21,6 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
-            debuggable false
-            jniDebugBuild false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -48,7 +46,7 @@ android {
         }
     }
     
-    lintOptions {
+    lint {
         abortOnError false
         checkReleaseBuilds false
     }
