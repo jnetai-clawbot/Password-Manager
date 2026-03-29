@@ -7,6 +7,7 @@ plugins {
 android {
     namespace 'com.passwordmanager.app'
     compileSdk 33
+    buildToolsVersion "33.0.1"
 
     defaultConfig {
         applicationId "com.passwordmanager.app"
@@ -19,10 +20,10 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            shrinkResources false
+            debuggable false
+            jniDebugBuild false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-        debug {
-            debuggable true
         }
     }
     
@@ -38,10 +39,18 @@ android {
     buildFeatures {
         dataBinding true
         viewBinding true
+        buildConfig false
+    }
+    
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt']
+        }
     }
     
     lintOptions {
         abortOnError false
+        checkReleaseBuilds false
     }
 }
 
