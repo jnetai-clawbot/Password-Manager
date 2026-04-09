@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.passwordmanager.app-mergeDebugResources-42:/values-small-v4/values-small-v4.xml",
+            "map": [
+                {
+                    "source": "/home/jay/.gradle/caches/transforms-3/4f9d51c7287930b455dd6af5be9176a9/transformed/material-1.8.0/res/values-small-v4/values-small-v4.xml",
+                    "from": {
+                        "startLines": "2,3,4,5",
+                        "startColumns": "4,4,4,4",
+                        "startOffsets": "55,128,198,270",
+                        "endColumns": "72,69,71,69",
+                        "endOffsets": "123,193,265,335"
+                    }
+                }
+            ]
+        }
+    ]
+}
