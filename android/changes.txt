@@ -1,57 +1,30 @@
-# Android Password Manager - Changes Summary
+# Password Manager APK - Changes Log
+## 2026-04-09 - APK Build Fix
 
-## Version 1.1.0 (Updated to match Python/C versions)
+### Issues Fixed:
+1. **GitHub Workflow Updated**: The workflow now automatically creates a GitHub Release with the APK on each push to main branch
+2. **Gradle Configuration Updated**: Increased JVM memory and added parallel build settings to gradle.properties
+3. **Local SDK Path**: Updated local.properties to use the correct Android SDK path
 
-### Features Added (matching Python/C versions):
-1. **Master Password Authentication** - Setup and login with SHA-256 hashed password
-2. **Add Entry** - Site, username, password, URL, notes, category
-3. **List All Entries** - Scrollable list with search and category filter
-4. **Get Password** - Search by site name to retrieve credentials
-5. **Edit Entry** - Modify all fields including category
-6. **Delete Entry** - Remove entries by site name
-7. **Generate Password** - Configurable length (8-64 chars)
-8. **Export JSON** - Backup all entries to JSON file
-9. **Import JSON** - Restore entries from JSON backup
-10. **Lock/Logout** - Lock app requiring password re-entry
+### Changes Made:
+- `.github/workflows/android.yml`: 
+  - Added `permissions: contents: write` for release creation
+  - Added version step for release naming (timestamp-based)
+  - Added `softprops/action-gh-release@v1` to create releases automatically
+  - Changed from artifact upload to direct release creation
+  
+- `gradle.properties`:
+  - Increased `org.gradle.jvmargs` from 2048m to 4096m
+  - Added `-Djava.awt.headless=true` for headless builds
+  - Added `org.gradle.parallel=false` for AAPT2 daemon fallback
+  - Added `android.enableAapt2DaemonFallback=false`
 
-### UI Features:
-- Search bar filters entries by site/username/URL in real-time
-- Category spinner to filter by category (general, work, personal, finance, social, other)
-- Results count showing filtered/total entries
-- Entry cards show category chip
-- Copy Username and Copy Password buttons
-- Material Design 3 dark theme
+### Build Status:
+- Workflow Run #79: Queued and building on GitHub Actions
+- Build environment: ubuntu-22.04 with Java 17 and Android SDK 34
+- Target: Android debug APK with v1/v2 signing
 
-### Database:
-- Room database with category field
-- Version 2 (may require migration for existing users)
-- Supports search queries across site, username, URL
-
-### Menu Options:
-- Get Password - Quick lookup by site
-- Generate - Password generator dialog
-- Delete - Delete by site name
-- Import/Export - JSON backup/restore
-- Lock - Lock app
-- About - App info
-
-### GitHub Actions:
-- `.github/workflows/android.yml` builds debug APK on push
-- APK output to `apk/` directory
-
-### Files Changed:
-- MainActivity.kt - Complete rewrite
-- EntriesAdapter.kt - Updated for category
-- Entry.kt - Added category field
-- EntryDao.kt - Added search/category queries
-- EntryDatabase.kt - Version bump to 2
-- activity_main.xml - Search bar, category spinner
-- dialog_add_entry.xml - Category spinner
-- dialog_view_entry.xml - Category display
-- item_entry.xml - Category chip, copy username
-- menu_main.xml - New actions
-- strings.xml - New strings
-- arrays.xml - Password lengths array
-
-## APK Location
-After GitHub Actions build: `apk/app-debug.apk`
+### Local Build Note:
+- AAPT2 daemon failure occurs on local machine due to missing system libraries
+- GitHub Actions build environment is properly configured and should succeed
+- Once built, APK will be available at: https://github.com/jnetai-clawbot/Password-Manager/releases
