@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build & Release Android APK
 
 on:
   push:
@@ -13,34 +13,70 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Setup SDK
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate Debug Keystore for Signing
+        working-directory: android/app
         run: |
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline.zip
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          unzip -q /tmp/cmdline.zip -d $HOME/android-sdk/cmdline-tools
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest 2>/dev/null || true
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1
+          keytool -genkeypair \
+            -v \
+            -keystore debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Debug, OU=Debug, O=JNetAI, L=London, ST=London, C=UK"
+
       - name: Get version
         id: version
-        run: echo "version=$(date +'%Y.%m.%d%H%M%S')" >> $GITHUB_OUTPUT
-      - name: Build
+        run: echo "version=$(date +'%Y.%m.%d%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Build Release APK
         working-directory: android
+        env:
+          KEYSTORE_FILE: debug.keystore
+          KEYSTORE_PASSWORD: android
+          KEY_ALIAS: androiddebugkey
+          KEY_PASSWORD: android
         run: |
-          echo "sdk.dir=$HOME/android-sdk" > local.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
           chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx2048m"
+          ./gradlew clean assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m" --stacktrace
+
+      - name: Verify APK exists
+        run: |
+          ls -la android/app/build/outputs/apk/release/
+          file android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Rename APK
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             android/app/build/outputs/apk/release/PasswordManager.apk
+
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-v${{ steps.version.outputs.version }}
-          name: Android APK v${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Password Manager v${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            android/app/build/outputs/apk/release/PasswordManager.apk
+            android/app/build/outputs/apk/release/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PasswordManager-APK
+          path: android/app/build/outputs/apk/release/PasswordManager.apk
