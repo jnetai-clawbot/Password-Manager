@@ -641,6 +641,10 @@ class MainActivity : AppCompatActivity() {
                 doLock()
                 true
             }
+            R.id.action_share -> {
+                shareApp()
+                true
+            }
             R.id.action_about -> {
                 showAboutDialog()
                 true
@@ -658,12 +662,68 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Locked", Toast.LENGTH_SHORT).show()
     }
     
+    private fun shareApp() {
+        val shareIntent = android.content.Intent().apply {
+            action = android.content.Intent.ACTION_SEND
+            putExtra(android.content.Intent.EXTRA_TEXT, "Password Manager - Secure password storage with AES-256 encryption\n\nGet the latest version:\nhttps://github.com/jnetai-clawbot/Password-Manager/releases")
+            type = "text/plain"
+        }
+        startActivity(android.content.Intent.createChooser(shareIntent, "Share Password Manager"))
+    }
+
     private fun showAboutDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Password Manager")
-            .setMessage("Version 1.0\n\nSecure password storage\nAES-256 encryption\n\nCreated by J~Net 2026\njnetai.com")
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
+        }
+        
+        val title = android.widget.TextView(this).apply {
+            text = "🔐 Password Manager"
+            textSize = 20f
+            setTextColor(getColor(com.passwordmanager.app.R.color.primary))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+        layout.addView(title)
+        
+        val version = android.widget.TextView(this).apply {
+            text = "Version 1.1.0"
+            textSize = 14f
+            setTextColor(getColor(com.passwordmanager.app.R.color.text_secondary))
+            setPadding(0, 8, 0, 0)
+        }
+        layout.addView(version)
+        
+        val info = android.widget.TextView(this).apply {
+            text = "\nSecure password storage\nAES-256-GCM encryption\nDark theme with Material Design 3\n\nCreated by J~Net 2026\njnetai.com"
+            textSize = 14f
+            setTextColor(getColor(com.passwordmanager.app.R.color.text_primary))
+        }
+        layout.addView(info)
+        
+        val shareBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "📂 Share / Get Latest Version"
+            setCornerRadius(24)
+            setIcon(com.passwordmanager.app.R.drawable.ic_share)
+            iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
+            setPadding(16, 12, 16, 12)
+        }
+        layout.addView(shareBtn)
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(layout)
             .setPositiveButton("OK", null)
-            .show()
+            .create()
+        
+        shareBtn.setOnClickListener {
+            val shareIntent = android.content.Intent().apply {
+                action = android.content.Intent.ACTION_SEND
+                putExtra(android.content.Intent.EXTRA_TEXT, "Password Manager - Secure password storage with AES-256 encryption\n\nGet the latest version:\nhttps://github.com/jnetai-clawbot/Password-Manager/releases")
+                type = "text/plain"
+            }
+            startActivity(android.content.Intent.createChooser(shareIntent, "Share Password Manager"))
+        }
+        
+        dialog.show()
     }
     
     private fun importFromUri(uri: android.net.Uri) {

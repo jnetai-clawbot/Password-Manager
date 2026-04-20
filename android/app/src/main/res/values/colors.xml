@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Primary Colors -->
-    <color name="primary">#00D4FF</color>
-    <color name="primary_dark">#00A8CC</color>
-    <color name="primary_light">#66E5FF</color>
+    <!-- Primary Colors - Green theme matching Secure Notes -->
+    <color name="primary">#4DFF4D</color>
+    <color name="primary_dark">#00B300</color>
+    <color name="primary_light">#80FF80</color>
     
-    <!-- Background Colors -->
-    <color name="background">#1A1A2E</color>
-    <color name="surface">#16213E</color>
-    <color name="surface_elevated">#1F2B47</color>
+    <!-- Background Colors - Dark theme matching Secure Notes -->
+    <color name="background">#000000</color>
+    <color name="surface">#121212</color>
+    <color name="surface_elevated">#1E1E1E</color>
     
     <!-- Text Colors -->
     <color name="text_primary">#FFFFFF</color>
@@ -16,7 +16,7 @@
     <color name="text_hint">#707070</color>
     
     <!-- Status Colors -->
-    <color name="success">#2ED573</color>
+    <color name="success">#4DFF4D</color>
     <color name="error">#FF4757</color>
     <color name="warning">#FFA502</color>
 </resources>

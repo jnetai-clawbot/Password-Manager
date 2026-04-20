@@ -1,4 +1,26 @@
 # Password Manager APK - Changes Log
+
+## 2026-04-20 - v1.1.0 - Build Fix & Release Signing
+
+### Issues Fixed:
+1. **Missing AppDatabase class** — PasswordManagerApp.kt referenced AppDatabase but it was never defined. Created AppDatabase.kt alongside EntryDatabase.kt to fix crash on launch.
+2. **APK failed to install** — Unsigned debug APKs fail on many devices. Now builds a properly signed release APK with auto-generated keystore.
+3. **Duplicate workflows** — Removed `android.yml` and `android/.github/workflows/build.yml`, consolidated to root `.github/workflows/build.yml`.
+4. **Outdated dependencies** — Updated compileSdk/targetSdk 33→34, Java 11→17, Room 2.4.3→2.6.1, Lifecycle 2.5.1→2.7.0, Material 1.8→1.11, etc.
+5. **Unnecessary dataBinding** — Removed `dataBinding true` from build.gradle (only viewBinding needed).
+
+### Workflow Changes:
+- Builds **release APK** instead of debug (properly signed)
+- Uses `android-actions/setup-android@v3` for SDK setup
+- Auto-generates debug keystore for signing (`keytool`)
+- Renames output to `PasswordManager.apk`
+- Creates GitHub Release with both `PasswordManager.apk` and `app-release.apk`
+- Also uploads APK as artifact for easy download
+
+### Release:
+- **Tag:** v2026.04.200008
+- **Download:** https://github.com/jnetai-clawbot/Password-Manager/releases/tag/v2026.04.200008
+
 ## 2026-04-09 - APK Build Fix
 
 ### Issues Fixed:
