@@ -694,11 +694,35 @@ class MainActivity : AppCompatActivity() {
         layout.addView(version)
         
         val info = android.widget.TextView(this).apply {
-            text = "\nSecure password storage\nAES-256-GCM encryption\nDark theme with Material Design 3\n\nCreated by J~Net 2026\njnetai.com"
+            text = "\nSecure password storage\nAES-256-GCM encryption\nDark theme with Material Design 3\n\nCreated by J~Net 2026"
             textSize = 14f
             setTextColor(getColor(com.passwordmanager.app.R.color.text_primary))
         }
         layout.addView(info)
+        
+        // Clickable link to jnetai.com
+        val jnetLink = android.widget.TextView(this).apply {
+            text = "🌐 jnetai.com"
+            textSize = 16f
+            setTextColor(getColor(com.passwordmanager.app.R.color.primary))
+            setPadding(0, 8, 0, 4)
+            setOnClickListener {
+                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://jnetai.com")))
+            }
+        }
+        layout.addView(jnetLink)
+        
+        // Clickable link to GitHub
+        val githubLink = android.widget.TextView(this).apply {
+            text = "📦 GitHub Repository"
+            textSize = 16f
+            setTextColor(getColor(com.passwordmanager.app.R.color.primary))
+            setPadding(0, 4, 0, 12)
+            setOnClickListener {
+                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/jnetai-clawbot/Password-Manager/releases")))
+            }
+        }
+        layout.addView(githubLink)
         
         val shareBtn = com.google.android.material.button.MaterialButton(this).apply {
             text = "📂 Share / Get Latest Version"
