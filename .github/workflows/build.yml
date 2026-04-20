@@ -71,7 +71,6 @@ jobs:
           prerelease: false
           files: |
             android/app/build/outputs/apk/release/PasswordManager.apk
-            android/app/build/outputs/apk/release/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
