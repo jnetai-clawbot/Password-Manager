@@ -40,11 +40,14 @@
                 app:cardElevation="0dp">
 
                 <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/searchInputLayout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="🔍 Search passwords..."
                     app:boxBackgroundMode="none"
                     app:hintTextColor="@color/primary"
+                    app:endIconMode="clear_text"
+                    app:endIconTint="@color/text_secondary"
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Dense">
 
                     <com.google.android.material.textfield.TextInputEditText
