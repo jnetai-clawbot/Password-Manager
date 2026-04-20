@@ -702,10 +702,10 @@ class MainActivity : AppCompatActivity() {
         
         val shareBtn = com.google.android.material.button.MaterialButton(this).apply {
             text = "📂 Share / Get Latest Version"
-            setCornerRadius(24)
-            setIcon(com.passwordmanager.app.R.drawable.ic_share)
+            setIconResource(com.passwordmanager.app.R.drawable.ic_share)
             iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
-            setPadding(16, 12, 16, 12)
+            setPadding(48, 24, 48, 24)
+            cornerRadius = 24
         }
         layout.addView(shareBtn)
         
