@@ -25,16 +25,12 @@ jobs:
       - name: Generate Debug Keystore for Signing
         working-directory: android/app
         run: |
-          keytool -genkeypair \
-            -v \
-            -keystore debug.keystore \
-            -alias androiddebugkey \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass android \
-            -keypass android \
-            -dname "CN=Debug, OU=Debug, O=JNetAI, L=London, ST=London, C=UK"
+          # Use the persistent release.keystore from the repo
+          if [ ! -f release.keystore ]; then
+            echo "ERROR: release.keystore not found in repo!"
+            exit 1
+          fi
+          echo "Using persistent release.keystore from repo"
 
       - name: Get version
         id: version
@@ -43,10 +39,10 @@ jobs:
       - name: Build Release APK
         working-directory: android
         env:
-          KEYSTORE_FILE: debug.keystore
-          KEYSTORE_PASSWORD: android
-          KEY_ALIAS: androiddebugkey
-          KEY_PASSWORD: android
+          KEYSTORE_FILE: release.keystore
+          KEYSTORE_PASSWORD: JNet2026PM
+          KEY_ALIAS: release
+          KEY_PASSWORD: JNet2026PM
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           chmod +x gradlew

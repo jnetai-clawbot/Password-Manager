@@ -17,3 +17,10 @@ Password Manager v1.2.0 Changes
 4. FEAT: Release APK renamed to Password-Manager.apk
 
 5. CHORE: Version bumped to 1.2.0 (versionCode 3)
+
+v1.3.0 Changes
+==============
+- FIX: Persistent release keystore — all builds now use the same signing key
+  (Previous builds each generated a new debug key, causing "App not installed" 
+   when trying to update over an existing install)
+- Version bumped to 1.3.0 (versionCode 4)
