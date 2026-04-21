@@ -60,7 +60,7 @@ jobs:
       - name: Rename APK
         run: |
           cp android/app/build/outputs/apk/release/app-release.apk \
-             android/app/build/outputs/apk/release/PasswordManager.apk
+             android/app/build/outputs/apk/release/Password-Manager.apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -70,12 +70,12 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            android/app/build/outputs/apk/release/PasswordManager.apk
+            android/app/build/outputs/apk/release/Password-Manager.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PasswordManager-APK
-          path: android/app/build/outputs/apk/release/PasswordManager.apk
+          name: Password-Manager-APK
+          path: android/app/build/outputs/apk/release/Password-Manager.apk

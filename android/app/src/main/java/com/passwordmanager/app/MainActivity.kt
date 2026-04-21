@@ -677,21 +677,29 @@ class MainActivity : AppCompatActivity() {
             setPadding(48, 32, 48, 16)
         }
         
+        // Get actual version from PackageInfo
+        val versionName = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "unknown"
+        } catch (_: Exception) { "unknown" }
+        val versionCode = try {
+            packageManager.getPackageInfo(packageName, 0).versionCode
+        } catch (_: Exception) { 0 }
+        
         val title = android.widget.TextView(this).apply {
-            text = "🔐 Password Manager"
+            text = "\uD83D\uDD10 Password Manager"
             textSize = 20f
             setTextColor(getColor(com.passwordmanager.app.R.color.primary))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
         layout.addView(title)
         
-        val version = android.widget.TextView(this).apply {
-            text = "Version 1.1.0"
+        val versionText = android.widget.TextView(this).apply {
+            text = "Version $versionName ($versionCode)"
             textSize = 14f
             setTextColor(getColor(com.passwordmanager.app.R.color.text_secondary))
             setPadding(0, 8, 0, 0)
         }
-        layout.addView(version)
+        layout.addView(versionText)
         
         val info = android.widget.TextView(this).apply {
             text = "\nSecure password storage\nAES-256-GCM encryption\nDark theme with Material Design 3\n\nCreated by J~Net 2026"
@@ -702,7 +710,7 @@ class MainActivity : AppCompatActivity() {
         
         // Clickable link to jnetai.com
         val jnetLink = android.widget.TextView(this).apply {
-            text = "🌐 jnetai.com"
+            text = "\uD83C\uDF10 jnetai.com"
             textSize = 16f
             setTextColor(getColor(com.passwordmanager.app.R.color.primary))
             setPadding(0, 8, 0, 4)
@@ -714,7 +722,7 @@ class MainActivity : AppCompatActivity() {
         
         // Clickable link to GitHub
         val githubLink = android.widget.TextView(this).apply {
-            text = "📦 GitHub Repository"
+            text = "\uD83D\uDCE6 GitHub Repository"
             textSize = 16f
             setTextColor(getColor(com.passwordmanager.app.R.color.primary))
             setPadding(0, 4, 0, 12)
@@ -724,8 +732,35 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(githubLink)
         
+        // Check for Updates button
+        val updateBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "\uD83D\uDD04 Check for Updates"
+            setPadding(48, 24, 48, 24)
+            cornerRadius = 24
+        }
+        layout.addView(updateBtn)
+        
+        // Update status text
+        val updateStatus = android.widget.TextView(this).apply {
+            text = ""
+            textSize = 13f
+            setTextColor(getColor(com.passwordmanager.app.R.color.text_secondary))
+            setPadding(0, 4, 0, 0)
+            visibility = android.view.View.GONE
+        }
+        layout.addView(updateStatus)
+        
+        // Download update button (hidden by default)
+        val downloadBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "\u2192 Download Update"
+            setPadding(48, 16, 48, 16)
+            cornerRadius = 24
+            visibility = android.view.View.GONE
+        }
+        layout.addView(downloadBtn)
+        
         val shareBtn = com.google.android.material.button.MaterialButton(this).apply {
-            text = "📂 Share / Get Latest Version"
+            text = "\uD83D\uDCC2 Share App"
             setIconResource(com.passwordmanager.app.R.drawable.ic_share)
             iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
             setPadding(48, 24, 48, 24)
@@ -738,6 +773,47 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("OK", null)
             .create()
         
+        // Check for updates logic
+        updateBtn.setOnClickListener {
+            updateBtn.text = "Checking..."
+            updateBtn.isEnabled = false
+            
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val url = java.net.URL("https://api.github.com/repos/jnetai-clawbot/Password-Manager/releases/latest")
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    val response = conn.inputStream.bufferedReader().readText()
+                    conn.disconnect()
+                    
+                    val releaseJson = JSONObject(response)
+                    val latestTag = releaseJson.optString("tag_name", "unknown")
+                    
+                    withContext(Dispatchers.Main) {
+                        updateStatus.text = "Latest release: $latestTag\nYou have: v$versionName"
+                        updateStatus.visibility = android.view.View.VISIBLE
+                        updateBtn.text = "\uD83D\uDD04 Check for Updates"
+                        updateBtn.isEnabled = true
+                        downloadBtn.visibility = android.view.View.VISIBLE
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        updateStatus.text = "Check failed: ${e.message}"
+                        updateStatus.visibility = android.view.View.VISIBLE
+                        updateBtn.text = "\uD83D\uDD04 Check for Updates"
+                        updateBtn.isEnabled = true
+                    }
+                }
+            }
+        }
+        
+        downloadBtn.setOnClickListener {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/jnetai-clawbot/Password-Manager/releases/latest")))
+        }
+        
         shareBtn.setOnClickListener {
             val shareIntent = android.content.Intent().apply {
                 action = android.content.Intent.ACTION_SEND
@@ -749,7 +825,7 @@ class MainActivity : AppCompatActivity() {
         
         dialog.show()
     }
-    
+
     private fun importFromUri(uri: android.net.Uri) {
         try {
             val inputStream = contentResolver.openInputStream(uri)
@@ -765,34 +841,79 @@ class MainActivity : AppCompatActivity() {
             }
             
             var imported = 0
+            var skipped = 0
+            var errors = 0
+            
+            // Ensure AndroidKeyStore key exists before importing
+            ensureKeyStoreKey()
             
             for (i in 0 until entriesArray.length()) {
-                val obj = entriesArray.getJSONObject(i)
-                val site = obj.getString("site")
-                val username = obj.getString("username")
-                val password = obj.getString("password")
-                
-                val existing = database.entryDao().getBySite(site)
-                if (existing == null) {
-                    val entry = Entry(
-                        id = java.util.UUID.randomUUID().toString(),
-                        site = site,
-                        username = username,
-                        passwordEncrypted = encryptPassword(password),
-                        url = obj.optString("url", ""),
-                        notes = obj.optString("notes", ""),
-                        category = obj.optString("category", "general"),
-                        createdAt = System.currentTimeMillis()
-                    )
-                    database.entryDao().insert(entry)
-                    imported++
+                try {
+                    val obj = entriesArray.getJSONObject(i)
+                    val site = obj.getString("site")
+                    val username = obj.getString("username")
+                    val password = obj.optString("password", "")
+                    
+                    if (password.isEmpty()) {
+                        errors++
+                        continue
+                    }
+                    
+                    val existing = database.entryDao().getBySite(site)
+                    if (existing == null) {
+                        val entry = Entry(
+                            id = java.util.UUID.randomUUID().toString(),
+                            site = site,
+                            username = username,
+                            passwordEncrypted = encryptPassword(password),
+                            url = obj.optString("url", ""),
+                            notes = obj.optString("notes", ""),
+                            category = obj.optString("category", "general"),
+                            createdAt = System.currentTimeMillis()
+                        )
+                        database.entryDao().insert(entry)
+                        imported++
+                    } else {
+                        skipped++
+                    }
+                } catch (e: Exception) {
+                    errors++
                 }
             }
             
             loadEntries()
-            Toast.makeText(this, "Imported $imported entries", Toast.LENGTH_SHORT).show()
+            val msg = buildString {
+                append("Imported: $imported")
+                if (skipped > 0) append(" | Skipped (duplicate): $skipped")
+                if (errors > 0) append(" | Errors: $errors")
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    private fun ensureKeyStoreKey() {
+        try {
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            if (!keyStore.containsAlias("pm_key")) {
+                val kg = javax.crypto.KeyGenerator.getInstance(
+                    android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
+                )
+                val spec = android.security.keystore.KeyGenParameterSpec.Builder(
+                    "pm_key",
+                    android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .build()
+                kg.init(spec)
+                kg.generateKey()
+            }
+        } catch (e: Exception) {
+            // KeyStore key creation may fail on some devices; encryptPassword will fall back
         }
     }
     
