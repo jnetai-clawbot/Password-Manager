@@ -24,3 +24,29 @@ v1.3.0 Changes
   (Previous builds each generated a new debug key, causing "App not installed" 
    when trying to update over an existing install)
 - Version bumped to 1.3.0 (versionCode 4)
+
+v1.5.0 Changes
+==============
+CRITICAL FIX: Completely rewrote encryption system to match Secure Notes architecture
+
+- ENCRYPTION: Switched from AndroidKeyStore (device-bound, can't share across devices)
+  to PBKDF2 password-derived keys (same password = same encryption on any device)
+- CryptoManager.kt added: AES-256-GCM with PBKDF2 key derivation from master password
+- Each entry gets its own random salt + IV for maximum security
+- Export saves plaintext passwords in JSON (decrypted with password-derived key)
+- Import re-encrypts with the new device's password-derived key — works cross-device!
+- Master password stored in memory during session for encryption/decryption
+- Salt stored in SharedPreferences alongside password hash (PBKDF2-based)
+- Legacy migration: old AndroidKeyStore entries auto-migrate to PB: format when viewed/copied
+- Import now has detailed error codes (E-I01 through E-I11)
+- Export has error codes (E-X01 through E-X05)
+- Decrypt/copy shows E-D01 if decryption fails
+- Version bumped to 1.5.0 (versionCode 6)
+
+HOW IT WORKS NOW (same as Secure Notes):
+1. Login → password + salt → PBKDF2 derives AES-256 key
+2. Encrypt → random salt per entry + random IV → AES-256-GCM
+3. Decrypt → extract salt from ciphertext → derive key from password → AES-256-GCM
+4. Export → decrypt all entries → save plaintext in JSON
+5. Import → encrypt with current password + salt → same password on any device works
+6. Password is NEVER stored in plaintext — only PBKDF2 hash for verification

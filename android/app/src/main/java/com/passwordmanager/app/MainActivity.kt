@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     
     private var isAuthenticated = false
     private var masterPasswordHash: String? = null
+    private var masterPassword: String? = null
     private var currentFilter: String = "All"
     private var currentSearch: String = ""
     private var allEntries: List<Entry> = emptyList()
@@ -150,16 +151,39 @@ class MainActivity : AppCompatActivity() {
             .setView(dialogBinding.root)
             .setPositiveButton("Unlock") { _, _ ->
                 val password = dialogBinding.etPassword.text.toString()
-                val hash = hashString(password)
                 
                 val prefs = getSharedPreferences("auth", MODE_PRIVATE)
                 val storedHash = prefs.getString("master_hash", null)
+                val storedSalt = prefs.getString("master_salt", null)
+                
+                // Verify using PBKDF2 (same method as Secure Notes)
+                val hash = if (storedSalt != null) {
+                    val saltBytes = android.util.Base64.decode(storedSalt, android.util.Base64.NO_WRAP)
+                    CryptoManager.hashPassword(password, saltBytes)
+                } else {
+                    // Legacy: old SHA-256 hash
+                    hashString(password)
+                }
                 
                 if (hash == storedHash) {
                     masterPasswordHash = hash
+                    masterPassword = password  // Store in memory for encryption/decryption
                     isAuthenticated = true
+                    
+                    // Migrate legacy salt if missing
+                    if (storedSalt == null) {
+                        val newSalt = CryptoManager.generateSaltBase64()
+                        val saltBytes = android.util.Base64.decode(newSalt, android.util.Base64.NO_WRAP)
+                        val newHash = CryptoManager.hashPassword(password, saltBytes)
+                        getSharedPreferences("auth", MODE_PRIVATE).edit()
+                            .putString("master_hash", newHash)
+                            .putString("master_salt", newSalt)
+                            .apply()
+                        masterPasswordHash = newHash
+                    }
+                    
                     loadEntries()
-        } else {
+                } else {
                     Toast.makeText(this, "Invalid password", Toast.LENGTH_SHORT).show()
                     showLoginDialog()
                 }
@@ -285,12 +309,16 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun copyPassword(entry: Entry) {
-        val password = decryptPassword(entry.passwordEncrypted)
+        // Auto-migrate legacy entries
+        val currentEntry = migrateEntryIfNeeded(entry) ?: entry
+        val password = decryptPassword(currentEntry.passwordEncrypted)
         if (password != null) {
             val clipboard = getSystemService(android.content.ClipboardManager::class.java)
             val clip = android.content.ClipData.newPlainText("Password", password)
             clipboard.setPrimaryClip(clip)
             Toast.makeText(this, "Password copied", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "E-D01: Failed to decrypt password", Toast.LENGTH_LONG).show()
         }
     }
     
@@ -367,8 +395,10 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showViewDialog(entry: Entry) {
+        // Auto-migrate legacy entries
+        val currentEntry = migrateEntryIfNeeded(entry) ?: entry
         val dialogBinding = DialogViewEntryBinding.inflate(layoutInflater)
-        val decryptedPassword = decryptPassword(entry.passwordEncrypted) ?: ""
+        val decryptedPassword = decryptPassword(currentEntry.passwordEncrypted) ?: ""
         
         dialogBinding.tvSite.text = entry.site
         dialogBinding.tvUsername.text = entry.username
@@ -550,64 +580,69 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun encryptPassword(password: String): String {
-        return try {
-            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
-            keyStore.load(null)
-            
-            if (!keyStore.containsAlias("pm_key")) {
-                val kg = javax.crypto.KeyGenerator.getInstance(
-                    android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
-                )
-                val spec = android.security.keystore.KeyGenParameterSpec.Builder(
-                    "pm_key",
-                    android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
-                )
-                    .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .build()
-                
-                kg.init(spec)
-                kg.generateKey()
-            }
-            
-            val key = keyStore.getKey("pm_key", null) as javax.crypto.SecretKey
-            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
-            
-            val encrypted = cipher.doFinal(password.toByteArray())
-            val iv = cipher.iv
-            
-            val combined = iv + encrypted
-            Base64.encodeToString(combined, Base64.NO_WRAP)
-        } catch (e: Exception) {
-            Base64.encodeToString(password.toByteArray(), Base64.NO_WRAP)
-        }
+        // Use CryptoManager with the logged-in master password for PBKDF2-derived encryption
+        val mp = masterPassword ?: throw Exception("E-E01: Not authenticated — no master password in session")
+        return CryptoManager.encrypt(password, mp)
     }
     
     private fun decryptPassword(encrypted: String): String? {
+        val mp = masterPassword ?: return null
+        // Try new PB: format first (password-derived key)
+        val result = CryptoManager.decrypt(encrypted, mp)
+        if (result != null) return result
+        
+        // Fallback: try legacy AndroidKeyStore format for migration
+        return decryptLegacyKS(encrypted)
+    }
+    
+    private fun decryptLegacyKS(encrypted: String): String? {
         return try {
             val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
             keyStore.load(null)
-            
             val key = keyStore.getKey("pm_key", null) as? javax.crypto.SecretKey ?: return null
             
-            val combined = Base64.decode(encrypted, Base64.NO_WRAP)
-            val iv = combined.copyOfRange(0, 12)
-            val encryptedBytes = combined.copyOfRange(12, combined.size)
-            
-            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            val spec = javax.crypto.spec.GCMParameterSpec(128, iv)
-            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, spec)
-            
-            String(cipher.doFinal(encryptedBytes))
-        } catch (e: Exception) {
-            try {
-                String(Base64.decode(encrypted, Base64.NO_WRAP))
-            } catch (e2: Exception) {
+            // Try KS: prefix format
+            if (encrypted.startsWith("KS:")) {
+                val combined = android.util.Base64.decode(encrypted.substring(3), android.util.Base64.NO_WRAP)
+                val iv = combined.copyOfRange(0, 12)
+                val encryptedBytes = combined.copyOfRange(12, combined.size)
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.GCMParameterSpec(128, iv))
+                String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
+            } else if (encrypted.startsWith("FB:") || encrypted.startsWith("PL:")) {
+                // FB or PL formats from previous version — shouldn't be reachable but handle gracefully
                 null
+            } else {
+                // Old format (no prefix) — try AndroidKeyStore
+                val combined = android.util.Base64.decode(encrypted, android.util.Base64.NO_WRAP)
+                if (combined.size < 13) return null
+                val iv = combined.copyOfRange(0, 12)
+                val encryptedBytes = combined.copyOfRange(12, combined.size)
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.GCMParameterSpec(128, iv))
+                String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
             }
+        } catch (e: Exception) {
+            null
         }
+    }
+
+    private fun migrateEntryIfNeeded(entry: Entry): Entry? {
+        // Auto-migrate legacy AndroidKeyStore entries to PB: format
+        if (entry.passwordEncrypted.startsWith("PB:")) return null // already migrated
+        
+        val mp = masterPassword ?: return null
+        val plaintext = decryptLegacyKS(entry.passwordEncrypted) ?: return null
+        
+        // Re-encrypt with password-derived key
+        val newEncrypted = CryptoManager.encrypt(plaintext, mp)
+        val updated = entry.copy(passwordEncrypted = newEncrypted)
+        
+        // Save migrated entry
+        lifecycleScope.launch(Dispatchers.IO) {
+            database.entryDao().update(updated)
+        }
+        return updated
     }
     
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -828,34 +863,65 @@ class MainActivity : AppCompatActivity() {
 
     private fun importFromUri(uri: android.net.Uri) {
         try {
+            val mp = masterPassword ?: throw Exception("E-I01: Not authenticated")
             val inputStream = contentResolver.openInputStream(uri)
+                ?: throw Exception("E-I02: Cannot open file")
             val reader = BufferedReader(InputStreamReader(inputStream))
             val jsonString = reader.readText()
             reader.close()
             
-            val json = JSONObject(jsonString)
+            if (jsonString.isBlank()) {
+                Toast.makeText(this, "E-I03: File is empty", Toast.LENGTH_LONG).show()
+                return
+            }
+            
+            val json: JSONObject
+            try {
+                json = JSONObject(jsonString)
+            } catch (e: Exception) {
+                Toast.makeText(this, "E-I04: Invalid JSON format — ${e.message}", Toast.LENGTH_LONG).show()
+                return
+            }
+            
             val entriesArray: org.json.JSONArray = if (json.has("entries")) {
                 json.getJSONArray("entries")
             } else {
                 JSONArray().put(json)
             }
             
-            var imported = 0
-            var skipped = 0
-            var errors = 0
+            if (entriesArray.length() == 0) {
+                Toast.makeText(this, "E-I05: No entries found in file", Toast.LENGTH_LONG).show()
+                return
+            }
             
-            // Ensure AndroidKeyStore key exists before importing
-            ensureKeyStoreKey()
+            var imported = 0
+            var migrated = 0
+            var skipped = 0
+            var errorDetails = mutableListOf<String>()
             
             for (i in 0 until entriesArray.length()) {
                 try {
                     val obj = entriesArray.getJSONObject(i)
-                    val site = obj.getString("site")
-                    val username = obj.getString("username")
+                    val site = obj.optString("site", "").trim()
+                    val username = obj.optString("username", "").trim()
                     val password = obj.optString("password", "")
                     
+                    if (site.isEmpty()) {
+                        errorDetails.add("E-I06: Entry ${i+1} missing 'site' field")
+                        continue
+                    }
                     if (password.isEmpty()) {
-                        errors++
+                        errorDetails.add("E-I07: '$site' has empty password")
+                        continue
+                    }
+                    
+                    // Encrypt with current master password + local salt (CryptoManager handles salt internally)
+                    val encryptedPw = CryptoManager.encrypt(password, mp)
+                    
+                    // Verify round-trip
+                    val verify = CryptoManager.decrypt(encryptedPw, mp)
+                    if (verify != password) {
+                        errorDetails.add("E-I08: '$site' encrypt/verify failed")
                         continue
                     }
                     
@@ -865,11 +931,11 @@ class MainActivity : AppCompatActivity() {
                             id = java.util.UUID.randomUUID().toString(),
                             site = site,
                             username = username,
-                            passwordEncrypted = encryptPassword(password),
+                            passwordEncrypted = encryptedPw,
                             url = obj.optString("url", ""),
                             notes = obj.optString("notes", ""),
                             category = obj.optString("category", "general"),
-                            createdAt = System.currentTimeMillis()
+                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                         )
                         database.entryDao().insert(entry)
                         imported++
@@ -877,78 +943,100 @@ class MainActivity : AppCompatActivity() {
                         skipped++
                     }
                 } catch (e: Exception) {
-                    errors++
+                    errorDetails.add("E-I10: Entry ${i+1} — ${e.message}")
                 }
             }
             
             loadEntries()
+            
             val msg = buildString {
                 append("Imported: $imported")
-                if (skipped > 0) append(" | Skipped (duplicate): $skipped")
-                if (errors > 0) append(" | Errors: $errors")
+                if (migrated > 0) append("\nMigrated: $migrated")
+                if (skipped > 0) append("\nSkipped (duplicate): $skipped")
+                if (errorDetails.isNotEmpty()) {
+                    append("\nErrors: ${errorDetails.size}")
+                    errorDetails.take(3).forEach { append("\n  $it") }
+                    if (errorDetails.size > 3) append("\n  ...and ${errorDetails.size - 3} more")
+                }
             }
             Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-    
-    private fun ensureKeyStoreKey() {
-        try {
-            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
-            keyStore.load(null)
-            if (!keyStore.containsAlias("pm_key")) {
-                val kg = javax.crypto.KeyGenerator.getInstance(
-                    android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
-                )
-                val spec = android.security.keystore.KeyGenParameterSpec.Builder(
-                    "pm_key",
-                    android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
-                )
-                    .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .build()
-                kg.init(spec)
-                kg.generateKey()
-            }
-        } catch (e: Exception) {
-            // KeyStore key creation may fail on some devices; encryptPassword will fall back
+            android.util.Log.e("PM_IMPORT", "Import failed", e)
+            Toast.makeText(this, "E-I11: Import failed — ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
     
     private fun exportToUri(uri: android.net.Uri) {
         try {
+            val mp = masterPassword ?: throw Exception("E-X01: Not authenticated")
             lifecycleScope.launch(Dispatchers.IO) {
                 val entries = database.entryDao().getAll()
-                val jsonObject = JSONObject()
-                val jsonArray = JSONArray()
-                
-                for (entry in entries) {
-                    val obj = JSONObject().apply {
-                        put("site", entry.site)
-                        put("username", entry.username)
-                        put("password", decryptPassword(entry.passwordEncrypted) ?: "")
-                        put("url", entry.url)
-                        put("notes", entry.notes)
-                        put("category", entry.category)
+                if (entries.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "E-X01: No entries to export", Toast.LENGTH_LONG).show()
                     }
-                    jsonArray.put(obj)
+                    return@launch
                 }
                 
-                jsonObject.put("version", 1)
+                val prefs = getSharedPreferences("auth", MODE_PRIVATE)
+                val localSalt = prefs.getString("master_salt", null)
+                
+                val jsonObject = JSONObject()
+                val jsonArray = JSONArray()
+                var exportErrors = 0
+                
+                for (entry in entries) {
+                    try {
+                        // Decrypt using master password (works for both PB: and legacy KS formats)
+                        val decryptedPw = decryptPassword(entry.passwordEncrypted)
+                        if (decryptedPw == null) {
+                            exportErrors++
+                            android.util.Log.e("PM_X02", "Failed to decrypt: ${entry.site}")
+                            continue
+                        }
+                        val obj = JSONObject().apply {
+                            put("site", entry.site)
+                            put("username", entry.username)
+                            put("password", decryptedPw)
+                            put("url", entry.url)
+                            put("notes", entry.notes)
+                            put("category", entry.category)
+                            put("createdAt", entry.createdAt)
+                        }
+                        jsonArray.put(obj)
+                    } catch (e: Exception) {
+                        exportErrors++
+                        android.util.Log.e("PM_X03", "Export error: ${entry.site}", e)
+                    }
+                }
+                
+                jsonObject.put("version", 2)
                 jsonObject.put("app", "password-manager")
+                jsonObject.put("exportedAt", System.currentTimeMillis())
+                jsonObject.put("entryCount", entries.size)
+                jsonObject.put("salt", localSalt ?: "")
                 jsonObject.put("entries", jsonArray)
                 
                 withContext(Dispatchers.Main) {
-                    contentResolver.openOutputStream(uri)?.use { outputStream ->
-                        outputStream.write(jsonObject.toString(2).toByteArray())
+                    try {
+                        contentResolver.openOutputStream(uri)?.use { outputStream ->
+                            outputStream.write(jsonObject.toString(2).toByteArray())
+                        }
+                        val msg = if (exportErrors > 0) {
+                            "Exported ${entries.size - exportErrors} of ${entries.size} ($exportErrors errors)"
+                        } else {
+                            "Exported ${entries.size} entries"
+                        }
+                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MainActivity, "E-X04: Write failed — ${e.message}", Toast.LENGTH_LONG).show()
                     }
-                    Toast.makeText(this@MainActivity, "Exported ${entries.size} entries", Toast.LENGTH_SHORT).show()
                 }
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            android.util.Log.e("PM_EXPORT", "Export failed", e)
+            Toast.makeText(this, "E-X05: Export failed — ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
+
 }

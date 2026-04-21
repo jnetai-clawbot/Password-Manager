@@ -13,6 +13,8 @@ the online version on github is out of date and should be updated via workflows
 
 https://github.com/jnetai-clawbot/Password-Manager/releases
 
+Remember: Add a persistent release.keystore to the repo. All future builds will use the same signing key so it dont fail to update!
+
 so update the github with the newest working version and tell me when its in releases as a new release version!
 
 save changes to changes.txt and report back to me when you have fixed the issue(s)
