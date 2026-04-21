@@ -128,10 +128,16 @@ class MainActivity : AppCompatActivity() {
                     return@setPositiveButton
                 }
                 
-                masterPasswordHash = hashString(password)
+                // Generate salt and derive hash using PBKDF2
+                val salt = CryptoManager.generateSaltBase64()
+                val saltBytes = android.util.Base64.decode(salt, android.util.Base64.NO_WRAP)
+                masterPasswordHash = CryptoManager.hashPassword(password, saltBytes)
+                masterPassword = password  // Store in memory for encryption/decryption
+                
                 getSharedPreferences("auth", MODE_PRIVATE).edit()
                     .putString("auth_type", "password")
                     .putString("master_hash", masterPasswordHash)
+                    .putString("master_salt", salt)
                     .apply()
                 
                 isAuthenticated = true
@@ -691,6 +697,7 @@ class MainActivity : AppCompatActivity() {
     private fun doLock() {
         isAuthenticated = false
         masterPasswordHash = null
+        masterPassword = null
         getSharedPreferences("auth", MODE_PRIVATE).edit().putBoolean("locked", true).apply()
         adapter.submitList(emptyList())
         showLoginDialog()
