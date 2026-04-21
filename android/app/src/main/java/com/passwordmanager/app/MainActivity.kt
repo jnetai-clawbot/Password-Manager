@@ -869,113 +869,130 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun importFromUri(uri: android.net.Uri) {
-        try {
-            val mp = masterPassword ?: throw Exception("E-I01: Not authenticated")
-            val inputStream = contentResolver.openInputStream(uri)
-                ?: throw Exception("E-I02: Cannot open file")
-            val reader = BufferedReader(InputStreamReader(inputStream))
-            val jsonString = reader.readText()
-            reader.close()
-            
-            if (jsonString.isBlank()) {
-                Toast.makeText(this, "E-I03: File is empty", Toast.LENGTH_LONG).show()
-                return
-            }
-            
-            val json: JSONObject
+        val mp = masterPassword
+        if (mp == null) {
+            Toast.makeText(this, "E-I01: Not authenticated — please unlock first", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        lifecycleScope.launch {
             try {
-                json = JSONObject(jsonString)
+                // Read file on IO thread
+                val (jsonString, json) = withContext(Dispatchers.IO) {
+                    val inputStream = contentResolver.openInputStream(uri)
+                        ?: throw Exception("E-I02: Cannot open file")
+                    val reader = BufferedReader(InputStreamReader(inputStream))
+                    val text = reader.readText()
+                    reader.close()
+                    
+                    if (text.isBlank()) {
+                        throw Exception("E-I03: File is empty")
+                    }
+                    
+                    try {
+                        text to JSONObject(text)
+                    } catch (e: Exception) {
+                        throw Exception("E-I04: Invalid JSON format — ${e.message}")
+                    }
+                }
+                
+                val entriesArray: org.json.JSONArray = if (json.has("entries")) {
+                    json.getJSONArray("entries")
+                } else {
+                    JSONArray().put(json)
+                }
+                
+                if (entriesArray.length() == 0) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "E-I05: No entries found in file", Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
+                }
+                
+                // Process entries on IO thread
+                val result = withContext(Dispatchers.IO) {
+                    var imported = 0
+                    var skipped = 0
+                    var errorDetails = mutableListOf<String>()
+                    
+                    for (i in 0 until entriesArray.length()) {
+                        try {
+                            val obj = entriesArray.getJSONObject(i)
+                            val site = obj.optString("site", "").trim()
+                            val username = obj.optString("username", "").trim()
+                            val password = obj.optString("password", "")
+                            
+                            if (site.isEmpty()) {
+                                errorDetails.add("E-I06: Entry ${i+1} missing site field")
+                                continue
+                            }
+                            if (password.isEmpty()) {
+                                errorDetails.add("E-I07: $site has empty password")
+                                continue
+                            }
+                            
+                            val encryptedPw = CryptoManager.encrypt(password, mp)
+                            val verify = CryptoManager.decrypt(encryptedPw, mp)
+                            if (verify != password) {
+                                errorDetails.add("E-I08: $site encrypt/verify failed")
+                                continue
+                            }
+                            
+                            val existing = database.entryDao().getBySite(site)
+                            if (existing == null) {
+                                val entry = Entry(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    site = site,
+                                    username = username,
+                                    passwordEncrypted = encryptedPw,
+                                    url = obj.optString("url", ""),
+                                    notes = obj.optString("notes", ""),
+                                    category = obj.optString("category", "general"),
+                                    createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                                )
+                                database.entryDao().insert(entry)
+                                imported++
+                            } else {
+                                skipped++
+                            }
+                        } catch (e: Exception) {
+                            errorDetails.add("E-I10: Entry ${i+1} — ${e.message}")
+                        }
+                    }
+                    
+                    Triple(imported, skipped, errorDetails)
+                }
+                
+                val (imported, skipped, errorDetails) = result
+                loadEntries()
+                
+                val msg = buildString {
+                    append("Imported: $imported")
+                    if (skipped > 0) append("\nSkipped (duplicate): $skipped")
+                    if (errorDetails.isNotEmpty()) {
+                        append("\nErrors: ${errorDetails.size}")
+                        errorDetails.take(3).forEach { append("\n  $it") }
+                        if (errorDetails.size > 3) append("\n  ...and ${errorDetails.size - 3} more")
+                    }
+                }
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
-                Toast.makeText(this, "E-I04: Invalid JSON format — ${e.message}", Toast.LENGTH_LONG).show()
-                return
+                android.util.Log.e("PM_IMPORT", "Import failed", e)
+                Toast.makeText(this@MainActivity, "E-I11: Import failed — ${e.message}", Toast.LENGTH_LONG).show()
             }
-            
-            val entriesArray: org.json.JSONArray = if (json.has("entries")) {
-                json.getJSONArray("entries")
-            } else {
-                JSONArray().put(json)
-            }
-            
-            if (entriesArray.length() == 0) {
-                Toast.makeText(this, "E-I05: No entries found in file", Toast.LENGTH_LONG).show()
-                return
-            }
-            
-            var imported = 0
-            var migrated = 0
-            var skipped = 0
-            var errorDetails = mutableListOf<String>()
-            
-            for (i in 0 until entriesArray.length()) {
-                try {
-                    val obj = entriesArray.getJSONObject(i)
-                    val site = obj.optString("site", "").trim()
-                    val username = obj.optString("username", "").trim()
-                    val password = obj.optString("password", "")
-                    
-                    if (site.isEmpty()) {
-                        errorDetails.add("E-I06: Entry ${i+1} missing 'site' field")
-                        continue
-                    }
-                    if (password.isEmpty()) {
-                        errorDetails.add("E-I07: '$site' has empty password")
-                        continue
-                    }
-                    
-                    // Encrypt with current master password + local salt (CryptoManager handles salt internally)
-                    val encryptedPw = CryptoManager.encrypt(password, mp)
-                    
-                    // Verify round-trip
-                    val verify = CryptoManager.decrypt(encryptedPw, mp)
-                    if (verify != password) {
-                        errorDetails.add("E-I08: '$site' encrypt/verify failed")
-                        continue
-                    }
-                    
-                    val existing = database.entryDao().getBySite(site)
-                    if (existing == null) {
-                        val entry = Entry(
-                            id = java.util.UUID.randomUUID().toString(),
-                            site = site,
-                            username = username,
-                            passwordEncrypted = encryptedPw,
-                            url = obj.optString("url", ""),
-                            notes = obj.optString("notes", ""),
-                            category = obj.optString("category", "general"),
-                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-                        )
-                        database.entryDao().insert(entry)
-                        imported++
-                    } else {
-                        skipped++
-                    }
-                } catch (e: Exception) {
-                    errorDetails.add("E-I10: Entry ${i+1} — ${e.message}")
-                }
-            }
-            
-            loadEntries()
-            
-            val msg = buildString {
-                append("Imported: $imported")
-                if (migrated > 0) append("\nMigrated: $migrated")
-                if (skipped > 0) append("\nSkipped (duplicate): $skipped")
-                if (errorDetails.isNotEmpty()) {
-                    append("\nErrors: ${errorDetails.size}")
-                    errorDetails.take(3).forEach { append("\n  $it") }
-                    if (errorDetails.size > 3) append("\n  ...and ${errorDetails.size - 3} more")
-                }
-            }
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-        } catch (e: Exception) {
-            android.util.Log.e("PM_IMPORT", "Import failed", e)
-            Toast.makeText(this, "E-I11: Import failed — ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
     
     private fun exportToUri(uri: android.net.Uri) {
+        val mp = masterPassword
+        if (mp == null) {
+            Toast.makeText(this, "E-X01: Not authenticated — please unlock first", Toast.LENGTH_LONG).show()
+            return
+        }
+        // Read prefs on main thread before launching IO work
+        val localSalt = getSharedPreferences("auth", MODE_PRIVATE).getString("master_salt", null)
+        
         try {
-            val mp = masterPassword ?: throw Exception("E-X01: Not authenticated")
             lifecycleScope.launch(Dispatchers.IO) {
                 val entries = database.entryDao().getAll()
                 if (entries.isEmpty()) {
@@ -984,9 +1001,6 @@ class MainActivity : AppCompatActivity() {
                     }
                     return@launch
                 }
-                
-                val prefs = getSharedPreferences("auth", MODE_PRIVATE)
-                val localSalt = prefs.getString("master_salt", null)
                 
                 val jsonObject = JSONObject()
                 val jsonArray = JSONArray()
